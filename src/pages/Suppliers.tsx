@@ -35,7 +35,7 @@ export default function Suppliers() {
   async function save() {
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
-    const { error } = await supabase.from("suppliers").insert(parsed.data);
+    const { error } = await supabase.from("suppliers").insert({ name: parsed.data.name, contact: parsed.data.contact ?? null, address: parsed.data.address ?? null });
     if (error) { toast.error(error.message); return; }
     toast.success("Supplier added");
     setForm({ name: "", contact: "", address: "" });

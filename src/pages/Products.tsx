@@ -34,7 +34,7 @@ export default function Products() {
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", type: "raw" as const, stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+  const [form, setForm] = useState<{ name: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
 
   useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
 
