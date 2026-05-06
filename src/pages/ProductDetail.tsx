@@ -147,6 +147,14 @@ export default function ProductDetail() {
     load();
   }
 
+  async function deleteProduct() {
+    if (!product) return;
+    const { error } = await supabase.from("products").delete().eq("id", product.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Deleted #${product.code} ${product.name}`);
+    navigate("/products");
+  }
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   }
