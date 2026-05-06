@@ -31,6 +31,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default function ProductDetail() {
   const { id: routeParam } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [txs, setTxs] = useState<Tx[]>([]);
