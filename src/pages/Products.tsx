@@ -118,10 +118,13 @@ export default function Products() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(p => (
-          <Link key={p.id} to={`/product/${p.id}`}>
+          <Link key={p.id} to={`/product/${p.code}`}>
             <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
               <div className="flex items-start justify-between mb-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Package className="h-5 w-5" /></div>
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Package className="h-5 w-5" /></div>
+                  <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">#{p.code}</span>
+                </div>
                 <StockBadge stock={p.stock} reorder={p.reorder_level} />
               </div>
               <p className="font-semibold truncate">{p.name}</p>
