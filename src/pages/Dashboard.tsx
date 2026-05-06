@@ -72,9 +72,9 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {products.filter(p => p.stock <= p.reorder_level).slice(0, 6).map(p => (
-              <Link key={p.id} to={`/product/${p.id}`} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 hover:bg-secondary transition">
+              <Link key={p.id} to={`/product/${p.code}`} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 hover:bg-secondary transition">
                 <div>
-                  <p className="font-medium text-sm">{p.name}</p>
+                  <p className="font-medium text-sm"><span className="font-mono text-primary">#{p.code}</span> {p.name}</p>
                   <p className="text-xs text-muted-foreground">Stock: {p.stock} / Reorder at: {p.reorder_level}</p>
                 </div>
                 <StockBadge stock={p.stock} reorder={p.reorder_level} />
@@ -92,7 +92,7 @@ export default function Dashboard() {
             {txs.map(t => (
               <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40">
                 <div>
-                  <p className="font-medium text-sm">{t.products?.name ?? "—"}</p>
+                  <p className="font-medium text-sm">{t.products ? <><span className="font-mono text-primary">#{t.products.code}</span> {t.products.name}</> : "—"}</p>
                   <p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString()}</p>
                 </div>
                 <div className="text-right">
