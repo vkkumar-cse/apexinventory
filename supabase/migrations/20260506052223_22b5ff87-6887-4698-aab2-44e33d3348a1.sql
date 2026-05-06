@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.reset_product_code_when_empty() FROM PUBLIC, anon, authenticated;
