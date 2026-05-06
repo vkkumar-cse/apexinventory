@@ -23,7 +23,7 @@ const schema = z.object({
 });
 
 type Product = {
-  id: string; name: string; type: "raw" | "spare" | "finished";
+  id: string; code: number; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
   suppliers: { name: string } | null;
 };
@@ -40,7 +40,7 @@ export default function Products() {
 
   async function load() {
     const [p, s] = await Promise.all([
-      supabase.from("products").select("id,name,type,stock,reorder_level,location, suppliers(name)").order("name"),
+      supabase.from("products").select("id,code,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
     ]);
     setItems((p.data as any) ?? []);
