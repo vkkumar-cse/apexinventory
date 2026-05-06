@@ -7,8 +7,8 @@ import { StockBadge } from "@/components/StockBadge";
 import { Package, AlertTriangle, XCircle, Activity, ArrowRight } from "lucide-react";
 import { stockStatus } from "@/lib/queries";
 
-type Product = { id: string; name: string; stock: number; reorder_level: number; type: string };
-type Tx = { id: string; type: string; quantity: number; created_at: string; products: { name: string } | null };
+type Product = { id: string; code: number; name: string; stock: number; reorder_level: number; type: string };
+type Tx = { id: string; type: string; quantity: number; created_at: string; products: { code: number; name: string } | null };
 
 export default function Dashboard() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -18,8 +18,8 @@ export default function Dashboard() {
     document.title = "Dashboard · Forge Inventory";
     (async () => {
       const [p, t] = await Promise.all([
-        supabase.from("products").select("id,name,stock,reorder_level,type"),
-        supabase.from("transactions").select("id,type,quantity,created_at, products(name)").order("created_at", { ascending: false }).limit(10),
+        supabase.from("products").select("id,code,name,stock,reorder_level,type"),
+        supabase.from("transactions").select("id,type,quantity,created_at, products(code,name)").order("created_at", { ascending: false }).limit(10),
       ]);
       setProducts((p.data as Product[]) ?? []);
       setTxs((t.data as any) ?? []);
