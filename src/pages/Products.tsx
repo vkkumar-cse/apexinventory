@@ -65,7 +65,10 @@ export default function Products() {
     load();
   }
 
-  const filtered = items.filter(p => p.name.toLowerCase().includes(q.toLowerCase()));
+  const filtered = items.filter(p => {
+    const needle = q.toLowerCase();
+    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle);
+  });
 
   return (
     <div className="space-y-6">
