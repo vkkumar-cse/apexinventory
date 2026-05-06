@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StockBadge } from "@/components/StockBadge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { Download, Printer, MapPin, Truck, Plus, Minus, DollarSign, Loader2, AlertTriangle, Trash2, Link2, PackageX } from "lucide-react";
 import { stockStatus } from "@/lib/queries";
 
@@ -29,6 +31,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default function ProductDetail() {
   const { id: routeParam } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [txs, setTxs] = useState<Tx[]>([]);
@@ -144,6 +147,14 @@ export default function ProductDetail() {
     load();
   }
 
+  async function deleteProduct() {
+    if (!product) return;
+    const { error } = await supabase.from("products").delete().eq("id", product.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Deleted #${product.code} ${product.name}`);
+    navigate("/products");
+  }
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   }
@@ -179,7 +190,28 @@ export default function ProductDetail() {
             {product.suppliers && <span className="flex items-center gap-1"><Truck className="h-3 w-3" />{product.suppliers.name}</span>}
           </div>
         </div>
-        <StockBadge stock={product.stock} reorder={product.reorder_level} />
+        <div className="flex items-center gap-2">
+          <StockBadge stock={product.stock} reorder={product.reorder_level} />
+          {isAdmin && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4 mr-1" />Delete</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete #{product.code} {product.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the product and all its transactions and related links. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
 
       {lowRelated.length > 0 && (
