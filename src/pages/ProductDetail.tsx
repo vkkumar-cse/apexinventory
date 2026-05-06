@@ -190,7 +190,28 @@ export default function ProductDetail() {
             {product.suppliers && <span className="flex items-center gap-1"><Truck className="h-3 w-3" />{product.suppliers.name}</span>}
           </div>
         </div>
-        <StockBadge stock={product.stock} reorder={product.reorder_level} />
+        <div className="flex items-center gap-2">
+          <StockBadge stock={product.stock} reorder={product.reorder_level} />
+          {isAdmin && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4 mr-1" />Delete</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete #{product.code} {product.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the product and all its transactions and related links. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
 
       {lowRelated.length > 0 && (
