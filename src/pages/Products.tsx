@@ -23,7 +23,7 @@ const schema = z.object({
 });
 
 type Product = {
-  id: string; name: string; type: "raw" | "spare" | "finished";
+  id: string; code: number; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
   suppliers: { name: string } | null;
 };
@@ -40,7 +40,7 @@ export default function Products() {
 
   async function load() {
     const [p, s] = await Promise.all([
-      supabase.from("products").select("id,name,type,stock,reorder_level,location, suppliers(name)").order("name"),
+      supabase.from("products").select("id,code,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
     ]);
     setItems((p.data as any) ?? []);
@@ -65,7 +65,10 @@ export default function Products() {
     load();
   }
 
-  const filtered = items.filter(p => p.name.toLowerCase().includes(q.toLowerCase()));
+  const filtered = items.filter(p => {
+    const needle = q.toLowerCase();
+    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle);
+  });
 
   return (
     <div className="space-y-6">
@@ -118,10 +121,13 @@ export default function Products() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(p => (
-          <Link key={p.id} to={`/product/${p.id}`}>
+          <Link key={p.id} to={`/product/${p.code}`}>
             <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
               <div className="flex items-start justify-between mb-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Package className="h-5 w-5" /></div>
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Package className="h-5 w-5" /></div>
+                  <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">#{p.code}</span>
+                </div>
                 <StockBadge stock={p.stock} reorder={p.reorder_level} />
               </div>
               <p className="font-semibold truncate">{p.name}</p>

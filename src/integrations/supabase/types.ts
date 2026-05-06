@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       products: {
         Row: {
+          code: number
           created_at: string
           created_by: string | null
           id: string
@@ -28,6 +29,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          code?: number
           created_at?: string
           created_by?: string | null
           id?: string
@@ -40,6 +42,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          code?: number
           created_at?: string
           created_by?: string | null
           id?: string
