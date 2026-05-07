@@ -10,6 +10,8 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
+import Categories from "./pages/Categories";
+import CategoryDetail from "./pages/CategoryDetail";
 import Suppliers from "./pages/Suppliers";
 import Scan from "./pages/Scan";
 import NotFound from "./pages/NotFound";
@@ -29,6 +31,8 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/products" element={<Products />} />
               <Route path="/product/:id" element={<ProductDetail />} />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/categories/:id" element={<CategoryDetail />} />
               <Route path="/suppliers" element={<Suppliers />} />
               <Route path="/scan" element={<Scan />} />
             </Route>
