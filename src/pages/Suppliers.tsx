@@ -44,6 +44,13 @@ export default function Suppliers() {
     load();
   }
 
+  async function remove(s: Supplier) {
+    const { error } = await supabase.from("suppliers").delete().eq("id", s.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Deleted ${s.name}`);
+    load();
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
