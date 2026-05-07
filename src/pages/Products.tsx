@@ -170,8 +170,13 @@ export default function Products() {
                 <span className="text-2xl font-bold font-mono">{p.stock}</span>
                 <span className="text-xs text-muted-foreground">in stock · reorder {p.reorder_level}</span>
               </div>
-              <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+              <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Buy</p><p className="font-mono font-semibold">₹{Number(p.purchase_price ?? 0).toFixed(2)}</p></div>
+                <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Sell</p><p className="font-mono font-semibold text-success">₹{Number(p.selling_price ?? 0).toFixed(2)}</p></div>
+              </div>
+              <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground flex-wrap">
                 <span className="px-1.5 py-0.5 rounded bg-secondary uppercase tracking-wider">{p.type}</span>
+                {p.categories?.name && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{p.categories.name}</span>}
                 {p.location && <span>📍 {p.location}</span>}
                 {p.suppliers?.name && <span className="truncate">· {p.suppliers.name}</span>}
               </div>
