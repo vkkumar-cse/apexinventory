@@ -122,12 +122,12 @@ export default function ProductDetail() {
       ctx.fillText(product.name.slice(0, 30), 200, 380);
       ctx.font = "bold 18px monospace";
       ctx.fillStyle = "#1e40af";
-      ctx.fillText(`ID #${product.code}`, 200, 410);
+      ctx.fillText(`ID ${productIdentifier}`, 200, 410);
       ctx.font = "11px sans-serif";
       ctx.fillStyle = "#475569";
       ctx.fillText(`${product.type.toUpperCase()}${product.location ? " · " + product.location : ""}`, 200, 440);
       const a = document.createElement("a");
-      a.download = `qr-${product.code}-${product.name.replace(/\s+/g, "-")}.png`;
+      a.download = `qr-${productIdentifier}-${product.name.replace(/\s+/g, "-")}.png`;
       a.href = c.toDataURL("image/png");
       a.click();
     };
