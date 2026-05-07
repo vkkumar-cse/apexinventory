@@ -94,6 +94,11 @@ export default function Products() {
               <DialogHeader><DialogTitle>Add product</DialogTitle></DialogHeader>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Custom Product ID <span className="text-muted-foreground font-normal">(optional, e.g. opt01)</span></Label>
+                  <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Leave blank for auto numeric ID" />
+                  <p className="text-xs text-muted-foreground">Letters, numbers, - and _ only. Used in QR codes.</p>
+                </div>
                 <div className="space-y-2">
                   <Label>Type</Label>
                   <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
