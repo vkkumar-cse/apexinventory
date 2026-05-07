@@ -11,12 +11,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default function Scan() {
   const navigate = useNavigate();
-  const [recent, setRecent] = useState<{ id: string; code: number; name: string }[]>([]);
+  const [recent, setRecent] = useState<{ id: string; code: number; sku: string | null; name: string }[]>([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     document.title = "Scan · Forge Inventory";
-    supabase.from("products").select("id,code,name").order("updated_at", { ascending: false }).limit(8)
+    supabase.from("products").select("id,code,sku,name").order("updated_at", { ascending: false }).limit(8)
       .then(({ data }) => setRecent((data as any) ?? []));
   }, []);
 
