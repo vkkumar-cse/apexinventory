@@ -94,7 +94,7 @@ export default function Categories() {
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Delete {c.name}?</AlertTitle>
+                      <AlertDialogTitle>Delete {c.name}?</AlertDialogTitle>
                       <AlertDialogDescription>Products in this category will keep their data but be uncategorised.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
