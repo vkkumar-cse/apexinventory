@@ -2,11 +2,12 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Boxes, LayoutDashboard, Package, Truck, ScanLine, LogOut, Factory } from "lucide-react";
+import { Boxes, LayoutDashboard, Package, Truck, ScanLine, LogOut, Factory, FolderTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/categories", label: "Categories", icon: FolderTree },
   { to: "/products", label: "Products", icon: Package },
   { to: "/suppliers", label: "Suppliers", icon: Truck },
   { to: "/scan", label: "Scan", icon: ScanLine },

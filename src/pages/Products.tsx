@@ -20,6 +20,9 @@ const schema = z.object({
   reorder_level: z.number().int().min(0),
   location: z.string().trim().max(80).optional(),
   supplier_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().uuid().optional().nullable(),
+  purchase_price: z.number().min(0),
+  selling_price: z.number().min(0),
   sku: z
     .string()
     .trim()
@@ -33,26 +36,31 @@ const schema = z.object({
 type Product = {
   id: string; code: number; sku: string | null; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
+  purchase_price: number; selling_price: number;
   suppliers: { name: string } | null;
+  categories: { id: string; name: string } | null;
 };
 
 export default function Products() {
   const { isAdmin } = useAuth();
   const [items, setItems] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<{ name: string; sku: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+  const [form, setForm] = useState({ name: "", sku: "", type: "raw" as "raw" | "spare" | "finished", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0" });
 
   useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
 
   async function load() {
-    const [p, s] = await Promise.all([
-      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
+    const [p, s, c] = await Promise.all([
+      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location,purchase_price,selling_price, suppliers(name), categories(id,name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
+      (supabase as any).from("categories").select("id,name").order("name"),
     ]);
     setItems((p.data as any) ?? []);
     setSuppliers(s.data ?? []);
+    setCategories((c.data as any) ?? []);
   }
 
   async function save() {
@@ -64,6 +72,9 @@ export default function Products() {
       reorder_level: parseInt(form.reorder_level || "0", 10),
       location: form.type === "spare" ? form.location : undefined,
       supplier_id: form.supplier_id || null,
+      category_id: form.category_id || null,
+      purchase_price: parseFloat(form.purchase_price || "0"),
+      selling_price: parseFloat(form.selling_price || "0"),
       sku,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
@@ -71,7 +82,7 @@ export default function Products() {
     if (error) { toast.error(error.message); return; }
     toast.success("Product created");
     setOpen(false);
-    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0" });
     load();
   }
 
@@ -111,12 +122,21 @@ export default function Products() {
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                    <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label>Supplier</Label>
                   <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
                     <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                     <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
+                <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
                 <div className="space-y-2"><Label>Initial stock</Label><Input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
                 <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
                 {form.type === "spare" && (
@@ -150,8 +170,13 @@ export default function Products() {
                 <span className="text-2xl font-bold font-mono">{p.stock}</span>
                 <span className="text-xs text-muted-foreground">in stock · reorder {p.reorder_level}</span>
               </div>
-              <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+              <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Buy</p><p className="font-mono font-semibold">₹{Number(p.purchase_price ?? 0).toFixed(2)}</p></div>
+                <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Sell</p><p className="font-mono font-semibold text-success">₹{Number(p.selling_price ?? 0).toFixed(2)}</p></div>
+              </div>
+              <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground flex-wrap">
                 <span className="px-1.5 py-0.5 rounded bg-secondary uppercase tracking-wider">{p.type}</span>
+                {p.categories?.name && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{p.categories.name}</span>}
                 {p.location && <span>📍 {p.location}</span>}
                 {p.suppliers?.name && <span className="truncate">· {p.suppliers.name}</span>}
               </div>
