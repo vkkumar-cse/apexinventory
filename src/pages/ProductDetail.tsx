@@ -66,14 +66,14 @@ export default function ProductDetail() {
     if (!routeParam) return;
     setLoading(true);
 
-    // Resolve route param (could be a numeric code OR a UUID) to a product row
+    // Resolve route param: UUID, numeric code, or custom SKU (case-insensitive)
     let query = supabase.from("products").select("*, suppliers(name,contact,address)");
     if (UUID_RE.test(routeParam)) {
       query = query.eq("id", routeParam);
     } else if (/^\d+$/.test(routeParam)) {
       query = query.eq("code", parseInt(routeParam, 10));
     } else {
-      setProduct(null); setLoading(false); return;
+      query = query.ilike("sku", routeParam);
     }
     const { data: p } = await query.maybeSingle();
 
