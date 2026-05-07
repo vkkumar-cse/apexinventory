@@ -182,7 +182,10 @@ export default function ProductDetail() {
         <div>
           <Link to="/products" className="text-xs text-muted-foreground hover:text-foreground">← All products</Link>
           <div className="flex items-baseline gap-3 mt-1">
-            <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">ID #{product.code}</span>
+            <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">
+              {product.sku ? product.sku : `#${product.code}`}
+            </span>
+            {product.sku && <span className="text-[10px] font-mono text-muted-foreground">#{product.code}</span>}
             <h1 className="text-3xl font-bold tracking-tight">{product.name}</h1>
           </div>
           <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground flex-wrap">
