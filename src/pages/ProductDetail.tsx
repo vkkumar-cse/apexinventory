@@ -269,7 +269,7 @@ export default function ProductDetail() {
             <canvas ref={qrCanvasRef} className="block" />
           </div>
           <p className="font-medium mt-3 text-sm">{product.name}</p>
-          <p className="text-xs text-primary font-mono font-bold">ID #{product.code}</p>
+          <p className="text-xs text-primary font-mono font-bold">ID {productIdentifier}</p>
           <p className="text-[10px] text-muted-foreground font-mono break-all mt-1">{productUrl}</p>
           <div className="flex gap-2 mt-4 no-print">
             <Button variant="outline" size="sm" className="flex-1" onClick={downloadQR}><Download className="h-3 w-3 mr-1" />PNG</Button>
