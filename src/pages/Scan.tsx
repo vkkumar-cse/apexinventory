@@ -31,17 +31,12 @@ export default function Scan() {
       navigate(`/product/${urlMatch[1]}`);
       return;
     }
-    // Case 2: pure number → numeric code
-    if (/^\d+$/.test(raw)) {
+    // Case 2: numeric code, UUID, or custom SKU (letters/numbers/-/_)
+    if (/^[A-Za-z0-9_-]+$/.test(raw)) {
       navigate(`/product/${raw}`);
       return;
     }
-    // Case 3: UUID
-    if (UUID_RE.test(raw)) {
-      navigate(`/product/${raw}`);
-      return;
-    }
-    toast.error("Enter a product number, UUID, or full QR URL");
+    toast.error("Enter a product ID, SKU, or full QR URL");
   }
 
   return (
