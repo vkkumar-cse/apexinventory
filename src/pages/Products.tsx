@@ -42,13 +42,13 @@ export default function Products() {
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<{ name: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+  const [form, setForm] = useState<{ name: string; sku: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
 
   useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
 
   async function load() {
     const [p, s] = await Promise.all([
-      supabase.from("products").select("id,code,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
+      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
     ]);
     setItems((p.data as any) ?? []);
@@ -56,6 +56,7 @@ export default function Products() {
   }
 
   async function save() {
+    const sku = form.sku.trim() || null;
     const parsed = schema.safeParse({
       name: form.name,
       type: form.type,
@@ -63,19 +64,20 @@ export default function Products() {
       reorder_level: parseInt(form.reorder_level || "0", 10),
       location: form.type === "spare" ? form.location : undefined,
       supplier_id: form.supplier_id || null,
+      sku,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     const { error } = await supabase.from("products").insert(parsed.data as any);
     if (error) { toast.error(error.message); return; }
     toast.success("Product created");
     setOpen(false);
-    setForm({ name: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
     load();
   }
 
   const filtered = items.filter(p => {
     const needle = q.toLowerCase();
-    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle);
+    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle) || (p.sku ?? "").toLowerCase().includes(needle);
   });
 
   return (
