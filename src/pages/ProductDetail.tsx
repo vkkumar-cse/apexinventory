@@ -43,8 +43,9 @@ export default function ProductDetail() {
   const [qrUrl, setQrUrl] = useState("");
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // QR always encodes the short code: /product/<code>
-  const productUrl = product ? `${window.location.origin}/product/${product.code}` : "";
+  // QR encodes the human-friendly identifier: SKU if set, else numeric code
+  const productIdentifier = product ? (product.sku ?? String(product.code)) : "";
+  const productUrl = product ? `${window.location.origin}/product/${productIdentifier}` : "";
 
   useEffect(() => {
     if (!routeParam) return;
