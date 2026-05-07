@@ -11,12 +11,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default function Scan() {
   const navigate = useNavigate();
-  const [recent, setRecent] = useState<{ id: string; code: number; name: string }[]>([]);
+  const [recent, setRecent] = useState<{ id: string; code: number; sku: string | null; name: string }[]>([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     document.title = "Scan · Forge Inventory";
-    supabase.from("products").select("id,code,name").order("updated_at", { ascending: false }).limit(8)
+    supabase.from("products").select("id,code,sku,name").order("updated_at", { ascending: false }).limit(8)
       .then(({ data }) => setRecent((data as any) ?? []));
   }, []);
 
@@ -31,17 +31,12 @@ export default function Scan() {
       navigate(`/product/${urlMatch[1]}`);
       return;
     }
-    // Case 2: pure number → numeric code
-    if (/^\d+$/.test(raw)) {
+    // Case 2: numeric code, UUID, or custom SKU (letters/numbers/-/_)
+    if (/^[A-Za-z0-9_-]+$/.test(raw)) {
       navigate(`/product/${raw}`);
       return;
     }
-    // Case 3: UUID
-    if (UUID_RE.test(raw)) {
-      navigate(`/product/${raw}`);
-      return;
-    }
-    toast.error("Enter a product number, UUID, or full QR URL");
+    toast.error("Enter a product ID, SKU, or full QR URL");
   }
 
   return (
@@ -59,7 +54,7 @@ export default function Scan() {
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
-            placeholder="Enter ID number (e.g. 1) or paste QR URL"
+            placeholder="Enter ID (e.g. 1 or opt01) or paste QR URL"
             value={search}
             onChange={e => setSearch(e.target.value)}
             inputMode="text"
@@ -68,8 +63,9 @@ export default function Scan() {
           <Button type="submit">Open</Button>
         </form>
         <p className="text-xs text-muted-foreground mt-3">
-          Accepts a numeric ID (<span className="font-mono">1</span>), a full URL
-          (<span className="font-mono">/product/1</span>), or a UUID.
+          Accepts a numeric ID (<span className="font-mono">1</span>), a custom SKU
+          (<span className="font-mono">opt01</span>), a full URL
+          (<span className="font-mono">/product/opt01</span>), or a UUID.
         </p>
       </Card>
 
@@ -79,11 +75,11 @@ export default function Scan() {
           {recent.map(p => (
             <button
               key={p.id}
-              onClick={() => navigate(`/product/${p.code}`)}
+              onClick={() => navigate(`/product/${p.sku ?? p.code}`)}
               className="w-full flex items-center gap-3 p-3 rounded-lg bg-secondary/40 hover:bg-secondary text-left"
             >
               <Package className="h-4 w-4 text-primary" />
-              <span className="font-mono text-xs text-primary">#{p.code}</span>
+              <span className="font-mono text-xs text-primary">{p.sku ? p.sku : `#${p.code}`}</span>
               <span className="font-medium">{p.name}</span>
             </button>
           ))}

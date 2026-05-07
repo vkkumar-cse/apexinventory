@@ -18,7 +18,7 @@ import { Download, Printer, MapPin, Truck, Plus, Minus, DollarSign, Loader2, Ale
 import { stockStatus } from "@/lib/queries";
 
 type Product = {
-  id: string; code: number; name: string; type: string; stock: number; reorder_level: number;
+  id: string; code: number; sku: string | null; name: string; type: string; stock: number; reorder_level: number;
   location: string | null; supplier_id: string | null;
   suppliers: { name: string; contact: string | null; address: string | null } | null;
 };
@@ -43,8 +43,9 @@ export default function ProductDetail() {
   const [qrUrl, setQrUrl] = useState("");
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // QR always encodes the short code: /product/<code>
-  const productUrl = product ? `${window.location.origin}/product/${product.code}` : "";
+  // QR encodes the human-friendly identifier: SKU if set, else numeric code
+  const productIdentifier = product ? (product.sku ?? String(product.code)) : "";
+  const productUrl = product ? `${window.location.origin}/product/${productIdentifier}` : "";
 
   useEffect(() => {
     if (!routeParam) return;
@@ -65,14 +66,14 @@ export default function ProductDetail() {
     if (!routeParam) return;
     setLoading(true);
 
-    // Resolve route param (could be a numeric code OR a UUID) to a product row
+    // Resolve route param: UUID, numeric code, or custom SKU (case-insensitive)
     let query = supabase.from("products").select("*, suppliers(name,contact,address)");
     if (UUID_RE.test(routeParam)) {
       query = query.eq("id", routeParam);
     } else if (/^\d+$/.test(routeParam)) {
       query = query.eq("code", parseInt(routeParam, 10));
     } else {
-      setProduct(null); setLoading(false); return;
+      query = query.ilike("sku", routeParam);
     }
     const { data: p } = await query.maybeSingle();
 
@@ -121,12 +122,12 @@ export default function ProductDetail() {
       ctx.fillText(product.name.slice(0, 30), 200, 380);
       ctx.font = "bold 18px monospace";
       ctx.fillStyle = "#1e40af";
-      ctx.fillText(`ID #${product.code}`, 200, 410);
+      ctx.fillText(`ID ${productIdentifier}`, 200, 410);
       ctx.font = "11px sans-serif";
       ctx.fillStyle = "#475569";
       ctx.fillText(`${product.type.toUpperCase()}${product.location ? " · " + product.location : ""}`, 200, 440);
       const a = document.createElement("a");
-      a.download = `qr-${product.code}-${product.name.replace(/\s+/g, "-")}.png`;
+      a.download = `qr-${productIdentifier}-${product.name.replace(/\s+/g, "-")}.png`;
       a.href = c.toDataURL("image/png");
       a.click();
     };
@@ -181,7 +182,10 @@ export default function ProductDetail() {
         <div>
           <Link to="/products" className="text-xs text-muted-foreground hover:text-foreground">← All products</Link>
           <div className="flex items-baseline gap-3 mt-1">
-            <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">ID #{product.code}</span>
+            <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">
+              {product.sku ? product.sku : `#${product.code}`}
+            </span>
+            {product.sku && <span className="text-[10px] font-mono text-muted-foreground">#{product.code}</span>}
             <h1 className="text-3xl font-bold tracking-tight">{product.name}</h1>
           </div>
           <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground flex-wrap">
@@ -265,7 +269,7 @@ export default function ProductDetail() {
             <canvas ref={qrCanvasRef} className="block" />
           </div>
           <p className="font-medium mt-3 text-sm">{product.name}</p>
-          <p className="text-xs text-primary font-mono font-bold">ID #{product.code}</p>
+          <p className="text-xs text-primary font-mono font-bold">ID {productIdentifier}</p>
           <p className="text-[10px] text-muted-foreground font-mono break-all mt-1">{productUrl}</p>
           <div className="flex gap-2 mt-4 no-print">
             <Button variant="outline" size="sm" className="flex-1" onClick={downloadQR}><Download className="h-3 w-3 mr-1" />PNG</Button>

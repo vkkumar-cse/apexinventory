@@ -20,10 +20,18 @@ const schema = z.object({
   reorder_level: z.number().int().min(0),
   location: z.string().trim().max(80).optional(),
   supplier_id: z.string().uuid().optional().nullable(),
+  sku: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .regex(/^[A-Za-z0-9_-]+$/, "SKU can only contain letters, numbers, - and _")
+    .optional()
+    .nullable(),
 });
 
 type Product = {
-  id: string; code: number; name: string; type: "raw" | "spare" | "finished";
+  id: string; code: number; sku: string | null; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
   suppliers: { name: string } | null;
 };
@@ -34,13 +42,13 @@ export default function Products() {
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<{ name: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+  const [form, setForm] = useState<{ name: string; sku: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
 
   useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
 
   async function load() {
     const [p, s] = await Promise.all([
-      supabase.from("products").select("id,code,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
+      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
     ]);
     setItems((p.data as any) ?? []);
@@ -48,6 +56,7 @@ export default function Products() {
   }
 
   async function save() {
+    const sku = form.sku.trim() || null;
     const parsed = schema.safeParse({
       name: form.name,
       type: form.type,
@@ -55,19 +64,20 @@ export default function Products() {
       reorder_level: parseInt(form.reorder_level || "0", 10),
       location: form.type === "spare" ? form.location : undefined,
       supplier_id: form.supplier_id || null,
+      sku,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     const { error } = await supabase.from("products").insert(parsed.data as any);
     if (error) { toast.error(error.message); return; }
     toast.success("Product created");
     setOpen(false);
-    setForm({ name: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
     load();
   }
 
   const filtered = items.filter(p => {
     const needle = q.toLowerCase();
-    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle);
+    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle) || (p.sku ?? "").toLowerCase().includes(needle);
   });
 
   return (
@@ -84,6 +94,11 @@ export default function Products() {
               <DialogHeader><DialogTitle>Add product</DialogTitle></DialogHeader>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Custom Product ID <span className="text-muted-foreground font-normal">(optional, e.g. opt01)</span></Label>
+                  <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Leave blank for auto numeric ID" />
+                  <p className="text-xs text-muted-foreground">Letters, numbers, - and _ only. Used in QR codes.</p>
+                </div>
                 <div className="space-y-2">
                   <Label>Type</Label>
                   <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
@@ -121,12 +136,12 @@ export default function Products() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(p => (
-          <Link key={p.id} to={`/product/${p.code}`}>
+          <Link key={p.id} to={`/product/${p.sku ?? p.code}`}>
             <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Package className="h-5 w-5" /></div>
-                  <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">#{p.code}</span>
+                  <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">{p.sku ? p.sku : `#${p.code}`}</span>
                 </div>
                 <StockBadge stock={p.stock} reorder={p.reorder_level} />
               </div>
