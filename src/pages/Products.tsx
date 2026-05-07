@@ -20,10 +20,18 @@ const schema = z.object({
   reorder_level: z.number().int().min(0),
   location: z.string().trim().max(80).optional(),
   supplier_id: z.string().uuid().optional().nullable(),
+  sku: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .regex(/^[A-Za-z0-9_-]+$/, "SKU can only contain letters, numbers, - and _")
+    .optional()
+    .nullable(),
 });
 
 type Product = {
-  id: string; code: number; name: string; type: "raw" | "spare" | "finished";
+  id: string; code: number; sku: string | null; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
   suppliers: { name: string } | null;
 };
