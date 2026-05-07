@@ -18,7 +18,7 @@ import { Download, Printer, MapPin, Truck, Plus, Minus, DollarSign, Loader2, Ale
 import { stockStatus } from "@/lib/queries";
 
 type Product = {
-  id: string; code: number; name: string; type: string; stock: number; reorder_level: number;
+  id: string; code: number; sku: string | null; name: string; type: string; stock: number; reorder_level: number;
   location: string | null; supplier_id: string | null;
   suppliers: { name: string; contact: string | null; address: string | null } | null;
 };
