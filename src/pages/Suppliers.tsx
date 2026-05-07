@@ -81,11 +81,32 @@ export default function Suppliers() {
           <Card key={s.id} className="p-5">
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Truck className="h-5 w-5" /></div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="font-semibold truncate">{s.name}</p>
                 {s.contact && <p className="text-sm text-muted-foreground truncate">{s.contact}</p>}
                 {s.address && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{s.address}</p>}
               </div>
+              {isAdmin && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive shrink-0">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete {s.name}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This permanently removes the supplier. Products linked to this supplier will keep their other details but lose the supplier link.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => remove(s)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           </Card>
         ))}
