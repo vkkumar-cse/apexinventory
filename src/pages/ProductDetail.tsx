@@ -192,8 +192,17 @@ export default function ProductDetail() {
           </div>
           <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground flex-wrap">
             <span className="px-2 py-0.5 rounded bg-secondary uppercase tracking-wider text-xs">{product.type}</span>
+            {product.categories && (
+              <Link to={`/categories/${product.categories.id}`} className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs hover:bg-primary/20">
+                {product.categories.name}
+              </Link>
+            )}
             {product.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{product.location}</span>}
             {product.suppliers && <span className="flex items-center gap-1"><Truck className="h-3 w-3" />{product.suppliers.name}</span>}
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <span className="px-3 py-1 rounded-md bg-secondary/50 text-sm">Buy: <b className="font-mono">₹{Number(product.purchase_price ?? 0).toFixed(2)}</b></span>
+            <span className="px-3 py-1 rounded-md bg-secondary/50 text-sm">Sell: <b className="font-mono text-success">₹{Number(product.selling_price ?? 0).toFixed(2)}</b></span>
           </div>
         </div>
         <div className="flex items-center gap-2">
