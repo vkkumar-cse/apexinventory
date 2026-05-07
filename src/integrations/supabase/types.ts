@@ -23,6 +23,7 @@ export type Database = {
           location: string | null
           name: string
           reorder_level: number
+          sku: string | null
           stock: number
           supplier_id: string | null
           type: Database["public"]["Enums"]["product_type"]
@@ -36,6 +37,7 @@ export type Database = {
           location?: string | null
           name: string
           reorder_level?: number
+          sku?: string | null
           stock?: number
           supplier_id?: string | null
           type: Database["public"]["Enums"]["product_type"]
@@ -49,6 +51,7 @@ export type Database = {
           location?: string | null
           name?: string
           reorder_level?: number
+          sku?: string | null
           stock?: number
           supplier_id?: string | null
           type?: Database["public"]["Enums"]["product_type"]
