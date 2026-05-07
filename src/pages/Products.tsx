@@ -20,6 +20,9 @@ const schema = z.object({
   reorder_level: z.number().int().min(0),
   location: z.string().trim().max(80).optional(),
   supplier_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().uuid().optional().nullable(),
+  purchase_price: z.number().min(0),
+  selling_price: z.number().min(0),
   sku: z
     .string()
     .trim()
@@ -33,26 +36,31 @@ const schema = z.object({
 type Product = {
   id: string; code: number; sku: string | null; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
+  purchase_price: number; selling_price: number;
   suppliers: { name: string } | null;
+  categories: { id: string; name: string } | null;
 };
 
 export default function Products() {
   const { isAdmin } = useAuth();
   const [items, setItems] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<{ name: string; sku: string; type: "raw" | "spare" | "finished"; stock: string; reorder_level: string; location: string; supplier_id: string }>({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+  const [form, setForm] = useState({ name: "", sku: "", type: "raw" as "raw" | "spare" | "finished", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0" });
 
   useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
 
   async function load() {
-    const [p, s] = await Promise.all([
-      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location, suppliers(name)").order("code"),
+    const [p, s, c] = await Promise.all([
+      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location,purchase_price,selling_price, suppliers(name), categories(id,name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
+      (supabase as any).from("categories").select("id,name").order("name"),
     ]);
     setItems((p.data as any) ?? []);
     setSuppliers(s.data ?? []);
+    setCategories((c.data as any) ?? []);
   }
 
   async function save() {
@@ -64,6 +72,9 @@ export default function Products() {
       reorder_level: parseInt(form.reorder_level || "0", 10),
       location: form.type === "spare" ? form.location : undefined,
       supplier_id: form.supplier_id || null,
+      category_id: form.category_id || null,
+      purchase_price: parseFloat(form.purchase_price || "0"),
+      selling_price: parseFloat(form.selling_price || "0"),
       sku,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
@@ -71,7 +82,7 @@ export default function Products() {
     if (error) { toast.error(error.message); return; }
     toast.success("Product created");
     setOpen(false);
-    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "" });
+    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0" });
     load();
   }
 
