@@ -20,7 +20,9 @@ import { stockStatus } from "@/lib/queries";
 type Product = {
   id: string; code: number; sku: string | null; name: string; type: string; stock: number; reorder_level: number;
   location: string | null; supplier_id: string | null;
+  purchase_price: number; selling_price: number;
   suppliers: { name: string; contact: string | null; address: string | null } | null;
+  categories: { id: string; name: string } | null;
 };
 
 type Tx = { id: string; type: string; quantity: number; created_at: string; note: string | null };
@@ -67,7 +69,7 @@ export default function ProductDetail() {
     setLoading(true);
 
     // Resolve route param: UUID, numeric code, or custom SKU (case-insensitive)
-    let query = supabase.from("products").select("*, suppliers(name,contact,address)");
+    let query = supabase.from("products").select("*, suppliers(name,contact,address), categories(id,name)");
     if (UUID_RE.test(routeParam)) {
       query = query.eq("id", routeParam);
     } else if (/^\d+$/.test(routeParam)) {
