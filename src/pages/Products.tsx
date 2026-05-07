@@ -122,12 +122,21 @@ export default function Products() {
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                    <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label>Supplier</Label>
                   <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
                     <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                     <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
+                <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
                 <div className="space-y-2"><Label>Initial stock</Label><Input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
                 <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
                 {form.type === "spare" && (
