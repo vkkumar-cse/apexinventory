@@ -51,6 +51,7 @@ export type Database = {
           reorder_level: number
           selling_price: number
           sku: string | null
+          specifications: string | null
           stock: number
           supplier_id: string | null
           type: Database["public"]["Enums"]["product_type"]
@@ -68,6 +69,7 @@ export type Database = {
           reorder_level?: number
           selling_price?: number
           sku?: string | null
+          specifications?: string | null
           stock?: number
           supplier_id?: string | null
           type: Database["public"]["Enums"]["product_type"]
@@ -85,6 +87,7 @@ export type Database = {
           reorder_level?: number
           selling_price?: number
           sku?: string | null
+          specifications?: string | null
           stock?: number
           supplier_id?: string | null
           type?: Database["public"]["Enums"]["product_type"]

@@ -6,8 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScanLine, Package } from "lucide-react";
 import { toast } from "sonner";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { CameraScanner } from "@/components/CameraScanner";
 
 export default function Scan() {
   const navigate = useNavigate();
@@ -20,23 +19,18 @@ export default function Scan() {
       .then(({ data }) => setRecent((data as any) ?? []));
   }, []);
 
+  function resolveAndGo(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    const urlMatch = trimmed.match(/\/product\/([^/?#\s]+)/i);
+    if (urlMatch) { navigate(`/product/${urlMatch[1]}`); return; }
+    if (/^[A-Za-z0-9_-]+$/.test(trimmed)) { navigate(`/product/${trimmed}`); return; }
+    toast.error("Unrecognised QR. Enter a product ID, SKU, or paste a full URL.");
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const raw = search.trim();
-    if (!raw) return;
-
-    // Case 1: full URL — extract whatever came after /product/
-    const urlMatch = raw.match(/\/product\/([^/?#\s]+)/i);
-    if (urlMatch) {
-      navigate(`/product/${urlMatch[1]}`);
-      return;
-    }
-    // Case 2: numeric code, UUID, or custom SKU (letters/numbers/-/_)
-    if (/^[A-Za-z0-9_-]+$/.test(raw)) {
-      navigate(`/product/${raw}`);
-      return;
-    }
-    toast.error("Enter a product ID, SKU, or full QR URL");
+    resolveAndGo(search);
   }
 
   return (
@@ -47,9 +41,13 @@ export default function Scan() {
         </div>
         <h1 className="text-3xl font-bold tracking-tight">Scan a product</h1>
         <p className="text-muted-foreground mt-2">
-          Point your phone camera at any printed QR — or enter a product number below.
+          Use your phone camera, or enter a product number below.
         </p>
       </div>
+
+      <Card className="p-6">
+        <CameraScanner onResult={(text) => resolveAndGo(text)} />
+      </Card>
 
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="flex gap-2">
@@ -58,14 +56,11 @@ export default function Scan() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             inputMode="text"
-            autoFocus
           />
           <Button type="submit">Open</Button>
         </form>
         <p className="text-xs text-muted-foreground mt-3">
-          Accepts a numeric ID (<span className="font-mono">1</span>), a custom SKU
-          (<span className="font-mono">opt01</span>), a full URL
-          (<span className="font-mono">/product/opt01</span>), or a UUID.
+          Accepts a numeric ID, custom SKU (<span className="font-mono">opt01</span>), full URL, or UUID.
         </p>
       </Card>
 

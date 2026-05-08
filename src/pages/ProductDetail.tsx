@@ -20,7 +20,7 @@ import { stockStatus } from "@/lib/queries";
 type Product = {
   id: string; code: number; sku: string | null; name: string; type: string; stock: number; reorder_level: number;
   location: string | null; supplier_id: string | null;
-  purchase_price: number; selling_price: number;
+  purchase_price: number; selling_price: number; specifications: string | null;
   suppliers: { name: string; contact: string | null; address: string | null } | null;
   categories: { id: string; name: string } | null;
 };
@@ -200,9 +200,20 @@ export default function ProductDetail() {
             {product.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{product.location}</span>}
             {product.suppliers && <span className="flex items-center gap-1"><Truck className="h-3 w-3" />{product.suppliers.name}</span>}
           </div>
+          {product.specifications && (
+            <p className="mt-3 text-sm bg-secondary/40 border border-border/50 rounded-md px-3 py-2 max-w-2xl">
+              <span className="text-muted-foreground text-xs uppercase tracking-wider mr-2">Specs</span>
+              {product.specifications}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-3">
-            <span className="px-3 py-1 rounded-md bg-secondary/50 text-sm">Buy: <b className="font-mono">₹{Number(product.purchase_price ?? 0).toFixed(2)}</b></span>
+            {isAdmin && (
+              <span className="px-3 py-1 rounded-md bg-secondary/50 text-sm">Buy: <b className="font-mono">₹{Number(product.purchase_price ?? 0).toFixed(2)}</b></span>
+            )}
             <span className="px-3 py-1 rounded-md bg-secondary/50 text-sm">Sell: <b className="font-mono text-success">₹{Number(product.selling_price ?? 0).toFixed(2)}</b></span>
+            {isAdmin && (
+              <span className="px-3 py-1 rounded-md bg-success/10 text-success text-sm">Margin: <b className="font-mono">₹{(Number(product.selling_price ?? 0) - Number(product.purchase_price ?? 0)).toFixed(2)}</b></span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
