@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
+import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { SearchSelect } from "@/components/SearchSelect";
 import { StockBadge } from "@/components/StockBadge";
 import { toast } from "sonner";
-import { Plus, Package, Search } from "lucide-react";
+import { Plus, Package, Search, FileSpreadsheet } from "lucide-react";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -23,6 +26,7 @@ const schema = z.object({
   category_id: z.string().uuid().optional().nullable(),
   purchase_price: z.number().min(0),
   selling_price: z.number().min(0),
+  specifications: z.string().trim().max(500).optional().nullable(),
   sku: z
     .string()
     .trim()
@@ -36,7 +40,7 @@ const schema = z.object({
 type Product = {
   id: string; code: number; sku: string | null; name: string; type: "raw" | "spare" | "finished";
   stock: number; reorder_level: number; location: string | null;
-  purchase_price: number; selling_price: number;
+  purchase_price: number; selling_price: number; specifications: string | null;
   suppliers: { name: string } | null;
   categories: { id: string; name: string } | null;
 };
@@ -48,13 +52,13 @@ export default function Products() {
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", sku: "", type: "raw" as "raw" | "spare" | "finished", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0" });
+  const [form, setForm] = useState({ name: "", sku: "", type: "raw" as "raw" | "spare" | "finished", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0", specifications: "" });
 
   useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
 
   async function load() {
     const [p, s, c] = await Promise.all([
-      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location,purchase_price,selling_price, suppliers(name), categories(id,name)").order("code"),
+      supabase.from("products").select("id,code,sku,name,type,stock,reorder_level,location,purchase_price,selling_price,specifications, suppliers(name), categories(id,name)").order("code"),
       supabase.from("suppliers").select("id,name").order("name"),
       (supabase as any).from("categories").select("id,name").order("name"),
     ]);
@@ -75,6 +79,7 @@ export default function Products() {
       category_id: form.category_id || null,
       purchase_price: parseFloat(form.purchase_price || "0"),
       selling_price: parseFloat(form.selling_price || "0"),
+      specifications: form.specifications.trim() || null,
       sku,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
@@ -82,13 +87,38 @@ export default function Products() {
     if (error) { toast.error(error.message); return; }
     toast.success("Product created");
     setOpen(false);
-    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0" });
+    setForm({ name: "", sku: "", type: "raw", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0", specifications: "" });
     load();
+  }
+
+  function exportExcel() {
+    const rows = items.map(p => ({
+      "Part #": p.sku ?? `#${p.code}`,
+      "Name": p.name,
+      "Specifications": p.specifications ?? "",
+      "Type": p.type,
+      "Category": p.categories?.name ?? "",
+      "Supplier": p.suppliers?.name ?? "",
+      "Shelf / Location": p.location ?? "",
+      "Stock": p.stock,
+      "Reorder level": p.reorder_level,
+      ...(isAdmin ? { "Purchase ₹": Number(p.purchase_price ?? 0) } : {}),
+      "Selling ₹": Number(p.selling_price ?? 0),
+      ...(isAdmin ? { "Margin ₹": Number(p.selling_price ?? 0) - Number(p.purchase_price ?? 0) } : {}),
+      "Stock value ₹": Number(p.selling_price ?? 0) * p.stock,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+    XLSX.writeFile(wb, `inventory-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   const filtered = items.filter(p => {
     const needle = q.toLowerCase();
-    return p.name.toLowerCase().includes(needle) || String(p.code).includes(needle) || (p.sku ?? "").toLowerCase().includes(needle);
+    return p.name.toLowerCase().includes(needle)
+      || String(p.code).includes(needle)
+      || (p.sku ?? "").toLowerCase().includes(needle)
+      || (p.specifications ?? "").toLowerCase().includes(needle);
   });
 
   return (
@@ -98,60 +128,73 @@ export default function Products() {
           <h1 className="text-3xl font-bold tracking-tight">Products</h1>
           <p className="text-muted-foreground mt-1">{items.length} items in inventory</p>
         </div>
-        {isAdmin && (
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New product</Button></DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader><DialogTitle>Add product</DialogTitle></DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-                <div className="col-span-2 space-y-2">
-                  <Label>Custom Product ID <span className="text-muted-foreground font-normal">(optional, e.g. opt01)</span></Label>
-                  <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Leave blank for auto numeric ID" />
-                  <p className="text-xs text-muted-foreground">Letters, numbers, - and _ only. Used in QR codes.</p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={exportExcel} disabled={items.length === 0}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" />Export
+          </Button>
+          {isAdmin && (
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New product</Button></DialogTrigger>
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader><DialogTitle>Add product</DialogTitle></DialogHeader>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                  <div className="col-span-2 space-y-2">
+                    <Label>Custom Product ID <span className="text-muted-foreground font-normal">(optional, e.g. opt01)</span></Label>
+                    <Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Leave blank for auto numeric ID" />
+                    <p className="text-xs text-muted-foreground">Letters, numbers, - and _ only. Used in QR codes.</p>
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label>Specifications <span className="text-muted-foreground font-normal">(e.g. 25 watt, M6 × 20mm)</span></Label>
+                    <Textarea rows={2} value={form.specifications} onChange={e => setForm({ ...form, specifications: e.target.value })} placeholder="Wattage, size, material, model number…" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Type</Label>
+                    <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="raw">Raw material</SelectItem>
+                        <SelectItem value="spare">Spare part</SelectItem>
+                        <SelectItem value="finished">Finished good</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Category</Label>
+                    <SearchSelect
+                      placeholder="Search category…"
+                      value={form.category_id}
+                      onChange={(v) => setForm({ ...form, category_id: v })}
+                      options={categories.map(c => ({ value: c.id, label: c.name }))}
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label>Supplier</Label>
+                    <SearchSelect
+                      placeholder="Search supplier…"
+                      value={form.supplier_id}
+                      onChange={(v) => setForm({ ...form, supplier_id: v })}
+                      options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+                    />
+                  </div>
+                  <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
+                  <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
+                  <div className="space-y-2"><Label>Initial stock</Label><Input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
+                  <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
+                  {form.type === "spare" && (
+                    <div className="col-span-2 space-y-2"><Label>Shelf / Loft location</Label><Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Rack-1, Loft-2" /></div>
+                  )}
+                  <Button className="col-span-2" onClick={save}>Create</Button>
                 </div>
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="raw">Raw material</SelectItem>
-                      <SelectItem value="spare">Spare part</SelectItem>
-                      <SelectItem value="finished">Finished good</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                    <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Supplier</Label>
-                  <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                    <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Initial stock</Label><Input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
-                {form.type === "spare" && (
-                  <div className="col-span-2 space-y-2"><Label>Location</Label><Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="e.g. Rack-1, Bero-2" /></div>
-                )}
-                <Button className="col-span-2" onClick={save}>Create</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Search products…" value={q} onChange={e => setQ(e.target.value)} />
+        <Input className="pl-9" placeholder="Search by name, ID, or specifications…" value={q} onChange={e => setQ(e.target.value)} />
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -166,12 +209,15 @@ export default function Products() {
                 <StockBadge stock={p.stock} reorder={p.reorder_level} />
               </div>
               <p className="font-semibold truncate">{p.name}</p>
+              {p.specifications && <p className="text-xs text-muted-foreground truncate mt-0.5">{p.specifications}</p>}
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-2xl font-bold font-mono">{p.stock}</span>
                 <span className="text-xs text-muted-foreground">in stock · reorder {p.reorder_level}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
-                <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Buy</p><p className="font-mono font-semibold">₹{Number(p.purchase_price ?? 0).toFixed(2)}</p></div>
+              <div className={`grid ${isAdmin ? "grid-cols-2" : "grid-cols-1"} gap-2 mt-3 text-xs`}>
+                {isAdmin && (
+                  <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Buy</p><p className="font-mono font-semibold">₹{Number(p.purchase_price ?? 0).toFixed(2)}</p></div>
+                )}
                 <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Sell</p><p className="font-mono font-semibold text-success">₹{Number(p.selling_price ?? 0).toFixed(2)}</p></div>
               </div>
               <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground flex-wrap">
