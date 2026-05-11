@@ -10,12 +10,12 @@ import { CameraScanner } from "@/components/CameraScanner";
 
 export default function Scan() {
   const navigate = useNavigate();
-  const [recent, setRecent] = useState<{ id: string; code: number; sku: string | null; name: string }[]>([]);
+  const [recent, setRecent] = useState<{ id: string; code: number; part_no: string | null; name: string }[]>([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     document.title = "Scan · Forge Inventory";
-    supabase.from("products").select("id,code,sku,name").order("updated_at", { ascending: false }).limit(8)
+    supabase.from("products").select("id,code,part_no,name").order("updated_at", { ascending: false }).limit(8)
       .then(({ data }) => setRecent((data as any) ?? []));
   }, []);
 
@@ -70,11 +70,11 @@ export default function Scan() {
           {recent.map(p => (
             <button
               key={p.id}
-              onClick={() => navigate(`/product/${p.sku ?? p.code}`)}
+              onClick={() => navigate(`/product/${p.part_no ?? p.code}`)}
               className="w-full flex items-center gap-3 p-3 rounded-lg bg-secondary/40 hover:bg-secondary text-left"
             >
               <Package className="h-4 w-4 text-primary" />
-              <span className="font-mono text-xs text-primary">{p.sku ? p.sku : `#${p.code}`}</span>
+              <span className="font-mono text-xs text-primary">{p.part_no ? p.part_no : `#${p.code}`}</span>
               <span className="font-medium">{p.name}</span>
             </button>
           ))}
