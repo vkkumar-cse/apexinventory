@@ -38,19 +38,105 @@ export type Database = {
         }
         Relationships: []
       }
+      product_requests: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          labels: Database["public"]["Enums"]["product_label"][]
+          location: string | null
+          name: string
+          note: string | null
+          part_no: string | null
+          purchase_price: number
+          reorder_level: number
+          requested_by: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selling_price: number
+          specifications: string | null
+          status: string
+          stock: number
+          supplier_id: string | null
+          type: Database["public"]["Enums"]["product_type"]
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          labels?: Database["public"]["Enums"]["product_label"][]
+          location?: string | null
+          name: string
+          note?: string | null
+          part_no?: string | null
+          purchase_price?: number
+          reorder_level?: number
+          requested_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          selling_price?: number
+          specifications?: string | null
+          status?: string
+          stock?: number
+          supplier_id?: string | null
+          type?: Database["public"]["Enums"]["product_type"]
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          labels?: Database["public"]["Enums"]["product_label"][]
+          location?: string | null
+          name?: string
+          note?: string | null
+          part_no?: string | null
+          purchase_price?: number
+          reorder_level?: number
+          requested_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          selling_price?: number
+          specifications?: string | null
+          status?: string
+          stock?: number
+          supplier_id?: string | null
+          type?: Database["public"]["Enums"]["product_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_requests_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_requests_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category_id: string | null
           code: number
           created_at: string
           created_by: string | null
+          description: string | null
           id: string
+          labels: Database["public"]["Enums"]["product_label"][]
           location: string | null
           name: string
+          part_no: string | null
           purchase_price: number
           reorder_level: number
           selling_price: number
-          sku: string | null
           specifications: string | null
           stock: number
           supplier_id: string | null
@@ -62,13 +148,15 @@ export type Database = {
           code?: number
           created_at?: string
           created_by?: string | null
+          description?: string | null
           id?: string
+          labels?: Database["public"]["Enums"]["product_label"][]
           location?: string | null
           name: string
+          part_no?: string | null
           purchase_price?: number
           reorder_level?: number
           selling_price?: number
-          sku?: string | null
           specifications?: string | null
           stock?: number
           supplier_id?: string | null
@@ -80,13 +168,15 @@ export type Database = {
           code?: number
           created_at?: string
           created_by?: string | null
+          description?: string | null
           id?: string
+          labels?: Database["public"]["Enums"]["product_label"][]
           location?: string | null
           name?: string
+          part_no?: string | null
           purchase_price?: number
           reorder_level?: number
           selling_price?: number
-          sku?: string | null
           specifications?: string | null
           stock?: number
           supplier_id?: string | null
@@ -272,6 +362,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "worker"
+      product_label: "OPTO" | "NPD"
       product_type: "raw" | "spare" | "finished"
       transaction_type: "purchase" | "usage" | "sale"
     }
@@ -402,6 +493,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "worker"],
+      product_label: ["OPTO", "NPD"],
       product_type: ["raw", "spare", "finished"],
       transaction_type: ["purchase", "usage", "sale"],
     },
