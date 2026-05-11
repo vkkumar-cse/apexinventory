@@ -21,6 +21,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          parent_id: string | null
         }
         Insert: {
           created_at?: string
@@ -28,6 +29,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          parent_id?: string | null
         }
         Update: {
           created_at?: string
@@ -35,8 +37,17 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          parent_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_requests: {
         Row: {
@@ -348,6 +359,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_count: { Args: never; Returns: number }
       get_my_role: {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]

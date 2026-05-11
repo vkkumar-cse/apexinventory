@@ -14,6 +14,8 @@ import Categories from "./pages/Categories";
 import CategoryDetail from "./pages/CategoryDetail";
 import Suppliers from "./pages/Suppliers";
 import Scan from "./pages/Scan";
+import Users from "./pages/Users";
+import Requests from "./pages/Requests";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,8 +35,10 @@ const App = () => (
               <Route path="/product/:id" element={<ProductDetail />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/categories/:id" element={<CategoryDetail />} />
-              <Route path="/suppliers" element={<Suppliers />} />
+              <Route path="/suppliers" element={<ProtectedRoute adminOnly><Suppliers /></ProtectedRoute>} />
               <Route path="/scan" element={<Scan />} />
+              <Route path="/requests" element={<Requests />} />
+              <Route path="/users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

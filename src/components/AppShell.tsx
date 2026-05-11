@@ -2,20 +2,22 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Boxes, LayoutDashboard, Package, Truck, ScanLine, LogOut, Factory, FolderTree } from "lucide-react";
+import { Boxes, LayoutDashboard, Package, Truck, ScanLine, LogOut, Factory, FolderTree, Users as UsersIcon, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const nav = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/categories", label: "Categories", icon: FolderTree },
-  { to: "/products", label: "Products", icon: Package },
-  { to: "/suppliers", label: "Suppliers", icon: Truck },
-  { to: "/scan", label: "Scan", icon: ScanLine },
-];
 
 export function AppShell() {
   const { user, role, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
+
+  const nav = [
+    { to: "/", label: "Dashboard", icon: LayoutDashboard, show: true },
+    { to: "/categories", label: "Categories", icon: FolderTree, show: true },
+    { to: "/products", label: "Products", icon: Package, show: true },
+    { to: "/suppliers", label: "Suppliers", icon: Truck, show: isAdmin },
+    { to: "/requests", label: "Requests", icon: ClipboardList, show: true },
+    { to: "/scan", label: "Scan", icon: ScanLine, show: true },
+    { to: "/users", label: "Users", icon: UsersIcon, show: isAdmin },
+  ].filter(n => n.show);
 
   return (
     <div className="min-h-screen flex flex-col">
