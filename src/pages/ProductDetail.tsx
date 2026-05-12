@@ -168,6 +168,74 @@ export default function ProductDetail() {
     toast.success(`Deleted ${product.name}`); navigate("/products");
   }
 
+  async function openEdit() {
+    if (!product) return;
+    const [s, c] = await Promise.all([
+      supabase.from("suppliers").select("id,name").order("name"),
+      (supabase as any).from("categories").select("id,name,parent:parent_id(name)").not("parent_id", "is", null).order("name"),
+    ]);
+    setSuppliers(s.data ?? []);
+    setSubcats(((c.data as any) ?? []).map((x: any) => ({ id: x.id, name: x.name, parent_name: x.parent?.name ?? "" })));
+    setEdit({
+      name: product.name,
+      part_no: product.part_no ?? "",
+      type: product.type as any,
+      stock: String(product.stock),
+      reorder_level: String(product.reorder_level),
+      location: product.location ?? "",
+      supplier_id: product.supplier_id ?? "",
+      category_id: product.categories?.id ?? "",
+      purchase_price: String(product.purchase_price ?? 0),
+      selling_price: String(product.selling_price ?? 0),
+      specifications: product.specifications ?? "",
+      description: product.description ?? "",
+      labels: product.labels ?? [],
+    });
+    setEditOpen(true);
+  }
+
+  function toggleEditLabel(l: "OPTO" | "NPD") {
+    setEdit(e => ({ ...e, labels: e.labels.includes(l) ? e.labels.filter(x => x !== l) : [...e.labels, l] }));
+  }
+
+  async function saveEdit() {
+    if (!product) return;
+    const editSchema = z.object({
+      name: z.string().trim().min(1).max(120),
+      type: z.enum(["raw", "spare", "finished"]),
+      stock: z.number().int().min(0),
+      reorder_level: z.number().int().min(0),
+      purchase_price: z.number().min(0),
+      selling_price: z.number().min(0),
+    });
+    const parsed = editSchema.safeParse({
+      name: edit.name, type: edit.type,
+      stock: parseInt(edit.stock || "0", 10),
+      reorder_level: parseInt(edit.reorder_level || "0", 10),
+      purchase_price: parseFloat(edit.purchase_price || "0"),
+      selling_price: parseFloat(edit.selling_price || "0"),
+    });
+    if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
+    const { error } = await supabase.from("products").update({
+      name: parsed.data.name,
+      part_no: edit.part_no.trim() || null,
+      type: parsed.data.type,
+      stock: parsed.data.stock,
+      reorder_level: parsed.data.reorder_level,
+      location: edit.location.trim() || null,
+      supplier_id: edit.supplier_id || null,
+      category_id: edit.category_id || null,
+      purchase_price: parsed.data.purchase_price,
+      selling_price: parsed.data.selling_price,
+      specifications: edit.specifications.trim() || null,
+      description: edit.description.trim() || null,
+      labels: edit.labels,
+    } as any).eq("id", product.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Product updated");
+    setEditOpen(false); load();
+  }
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   if (!product) return (
     <div className="max-w-md mx-auto py-16 text-center">
