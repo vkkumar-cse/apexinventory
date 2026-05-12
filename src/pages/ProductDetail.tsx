@@ -8,13 +8,16 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SearchSelect } from "@/components/SearchSelect";
 import { StockBadge } from "@/components/StockBadge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Printer, Plus, Minus, DollarSign, Loader2, AlertTriangle, Trash2, Link2, PackageX } from "lucide-react";
+import { Download, Printer, Plus, Minus, DollarSign, Loader2, AlertTriangle, Trash2, Link2, PackageX, Pencil } from "lucide-react";
 import { stockStatus } from "@/lib/queries";
 
 type Product = {
@@ -47,6 +50,19 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [qrUrl, setQrUrl] = useState("");
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Edit state
+  const [editOpen, setEditOpen] = useState(false);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [subcats, setSubcats] = useState<{ id: string; name: string; parent_name: string }[]>([]);
+  const [edit, setEdit] = useState({
+    name: "", part_no: "", type: "spare" as "raw" | "spare" | "finished",
+    stock: "0", reorder_level: "0", location: "",
+    supplier_id: "", category_id: "",
+    purchase_price: "0", selling_price: "0",
+    specifications: "", description: "",
+    labels: [] as ("OPTO" | "NPD")[],
+  });
 
   const productIdentifier = product ? (product.part_no ?? String(product.code)) : "";
   const productUrl = product ? `${window.location.origin}/product/${productIdentifier}` : "";
@@ -152,6 +168,74 @@ export default function ProductDetail() {
     toast.success(`Deleted ${product.name}`); navigate("/products");
   }
 
+  async function openEdit() {
+    if (!product) return;
+    const [s, c] = await Promise.all([
+      supabase.from("suppliers").select("id,name").order("name"),
+      (supabase as any).from("categories").select("id,name,parent:parent_id(name)").not("parent_id", "is", null).order("name"),
+    ]);
+    setSuppliers(s.data ?? []);
+    setSubcats(((c.data as any) ?? []).map((x: any) => ({ id: x.id, name: x.name, parent_name: x.parent?.name ?? "" })));
+    setEdit({
+      name: product.name,
+      part_no: product.part_no ?? "",
+      type: product.type as any,
+      stock: String(product.stock),
+      reorder_level: String(product.reorder_level),
+      location: product.location ?? "",
+      supplier_id: product.supplier_id ?? "",
+      category_id: product.categories?.id ?? "",
+      purchase_price: String(product.purchase_price ?? 0),
+      selling_price: String(product.selling_price ?? 0),
+      specifications: product.specifications ?? "",
+      description: product.description ?? "",
+      labels: product.labels ?? [],
+    });
+    setEditOpen(true);
+  }
+
+  function toggleEditLabel(l: "OPTO" | "NPD") {
+    setEdit(e => ({ ...e, labels: e.labels.includes(l) ? e.labels.filter(x => x !== l) : [...e.labels, l] }));
+  }
+
+  async function saveEdit() {
+    if (!product) return;
+    const editSchema = z.object({
+      name: z.string().trim().min(1).max(120),
+      type: z.enum(["raw", "spare", "finished"]),
+      stock: z.number().int().min(0),
+      reorder_level: z.number().int().min(0),
+      purchase_price: z.number().min(0),
+      selling_price: z.number().min(0),
+    });
+    const parsed = editSchema.safeParse({
+      name: edit.name, type: edit.type,
+      stock: parseInt(edit.stock || "0", 10),
+      reorder_level: parseInt(edit.reorder_level || "0", 10),
+      purchase_price: parseFloat(edit.purchase_price || "0"),
+      selling_price: parseFloat(edit.selling_price || "0"),
+    });
+    if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
+    const { error } = await supabase.from("products").update({
+      name: parsed.data.name,
+      part_no: edit.part_no.trim() || null,
+      type: parsed.data.type,
+      stock: parsed.data.stock,
+      reorder_level: parsed.data.reorder_level,
+      location: edit.location.trim() || null,
+      supplier_id: edit.supplier_id || null,
+      category_id: edit.category_id || null,
+      purchase_price: parsed.data.purchase_price,
+      selling_price: parsed.data.selling_price,
+      specifications: edit.specifications.trim() || null,
+      description: edit.description.trim() || null,
+      labels: edit.labels,
+    } as any).eq("id", product.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Product updated");
+    setEditOpen(false); load();
+  }
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   if (!product) return (
     <div className="max-w-md mx-auto py-16 text-center">
@@ -199,6 +283,9 @@ export default function ProductDetail() {
         </div>
         <div className="flex items-center gap-2">
           <StockBadge stock={product.stock} reorder={product.reorder_level} />
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={openEdit}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
+          )}
           {isAdmin && (
             <AlertDialog>
               <AlertDialogTrigger asChild><Button variant="destructive" size="sm"><Trash2 className="h-4 w-4 mr-1" />Delete</Button></AlertDialogTrigger>
@@ -339,6 +426,53 @@ export default function ProductDetail() {
           </div>
         </Card>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Edit product</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2"><Label>Part No.</Label><Input value={edit.part_no} onChange={e => setEdit({ ...edit, part_no: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2">
+              <Label>Labels</Label>
+              <div className="flex gap-2">
+                {(["OPTO", "NPD"] as const).map(l => (
+                  <Button key={l} type="button" size="sm" variant={edit.labels.includes(l) ? "default" : "outline"} onClick={() => toggleEditLabel(l)}>{l}</Button>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-2 space-y-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={edit.type} onValueChange={(v: any) => setEdit({ ...edit, type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="raw">Raw material</SelectItem>
+                  <SelectItem value="spare">Spare part</SelectItem>
+                  <SelectItem value="finished">Finished good</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sub-category</Label>
+              <SearchSelect placeholder="Search sub-category…" value={edit.category_id} onChange={(v) => setEdit({ ...edit, category_id: v })}
+                options={subcats.map(c => ({ value: c.id, label: `${c.parent_name} › ${c.name}` }))} />
+            </div>
+            <div className="col-span-2 space-y-2">
+              <Label>Supplier</Label>
+              <SearchSelect placeholder="Search supplier…" value={edit.supplier_id} onChange={(v) => setEdit({ ...edit, supplier_id: v })}
+                options={suppliers.map(s => ({ value: s.id, label: s.name }))} />
+            </div>
+            <div className="space-y-2"><Label>Purchase ₹</Label><Input type="number" min={0} step="0.01" value={edit.purchase_price} onChange={e => setEdit({ ...edit, purchase_price: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Selling ₹</Label><Input type="number" min={0} step="0.01" value={edit.selling_price} onChange={e => setEdit({ ...edit, selling_price: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Stock</Label><Input type="number" min={0} value={edit.stock} onChange={e => setEdit({ ...edit, stock: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={edit.reorder_level} onChange={e => setEdit({ ...edit, reorder_level: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2"><Label>Location</Label><Input value={edit.location} onChange={e => setEdit({ ...edit, location: e.target.value })} /></div>
+            <Button className="col-span-2" onClick={saveEdit}>Save changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
