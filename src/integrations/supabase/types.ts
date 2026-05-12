@@ -274,24 +274,30 @@ export type Database = {
           contact: string | null
           created_at: string
           created_by: string | null
+          email: string | null
           id: string
           name: string
+          phone: string | null
         }
         Insert: {
           address?: string | null
           contact?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           id?: string
           name: string
+          phone?: string | null
         }
         Update: {
           address?: string | null
           contact?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           id?: string
           name?: string
+          phone?: string | null
         }
         Relationships: []
       }
