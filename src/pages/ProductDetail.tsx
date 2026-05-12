@@ -284,6 +284,9 @@ export default function ProductDetail() {
         <div className="flex items-center gap-2">
           <StockBadge stock={product.stock} reorder={product.reorder_level} />
           {isAdmin && (
+            <Button variant="outline" size="sm" onClick={openEdit}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
+          )}
+          {isAdmin && (
             <AlertDialog>
               <AlertDialogTrigger asChild><Button variant="destructive" size="sm"><Trash2 className="h-4 w-4 mr-1" />Delete</Button></AlertDialogTrigger>
               <AlertDialogContent>
