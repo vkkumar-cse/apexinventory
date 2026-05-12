@@ -21,7 +21,7 @@ export default function Dashboard() {
   const [myName, setMyName] = useState("");
 
   useEffect(() => {
-    document.title = "Dashboard · Forge Inventory";
+    document.title = "Dashboard · Apex Inventory";
     (async () => {
       const txQuery = isAdmin
         ? supabase.from("transactions").select("id,type,quantity,created_at,user_id, products(code,part_no,name)").order("created_at", { ascending: false }).limit(15)

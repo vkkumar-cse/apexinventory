@@ -67,7 +67,7 @@ export default function ProductDetail() {
   const productIdentifier = product ? (product.part_no ?? String(product.code)) : "";
   const productUrl = product ? `${window.location.origin}/product/${productIdentifier}` : "";
 
-  useEffect(() => { if (routeParam) { document.title = "Product · Forge Inventory"; load(); } }, [routeParam]);
+  useEffect(() => { if (routeParam) { document.title = "Product · Apex Inventory"; load(); } }, [routeParam]);
 
   useEffect(() => {
     if (!productUrl) return;
@@ -111,7 +111,7 @@ export default function ProductDetail() {
     setProfiles(profMap);
     setRelated((r.data as any) ?? []);
     setAllProducts((all.data as any) ?? []);
-    document.title = `${(p as any).part_no ?? "#" + (p as any).code} ${(p as any).name} · Forge Inventory`;
+    document.title = `${(p as any).part_no ?? "#" + (p as any).code} ${(p as any).name} · Apex Inventory`;
     setLoading(false);
   }
 

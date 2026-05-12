@@ -21,7 +21,7 @@ export default function Users() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ email: "", password: "", display_name: "", role: "worker" as "worker" | "admin" });
 
-  useEffect(() => { document.title = "Users · Forge Inventory"; load(); }, []);
+  useEffect(() => { document.title = "Users · Apex Inventory"; load(); }, []);
 
   async function load() {
     setLoading(true);

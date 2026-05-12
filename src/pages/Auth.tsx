@@ -30,7 +30,7 @@ export default function Auth() {
   const [firstUser, setFirstUser] = useState<boolean>(false);
 
   useEffect(() => {
-    document.title = "Sign in · Forge Inventory";
+    document.title = "Sign in · Apex Inventory";
     if (!loading && session) navigate("/", { replace: true });
     (async () => {
       const { count } = await supabase.from("user_roles").select("id", { count: "exact", head: true });
