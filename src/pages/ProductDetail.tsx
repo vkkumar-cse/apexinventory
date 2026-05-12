@@ -8,13 +8,16 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SearchSelect } from "@/components/SearchSelect";
 import { StockBadge } from "@/components/StockBadge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Download, Printer, Plus, Minus, DollarSign, Loader2, AlertTriangle, Trash2, Link2, PackageX } from "lucide-react";
+import { Download, Printer, Plus, Minus, DollarSign, Loader2, AlertTriangle, Trash2, Link2, PackageX, Pencil } from "lucide-react";
 import { stockStatus } from "@/lib/queries";
 
 type Product = {
