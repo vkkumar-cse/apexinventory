@@ -426,6 +426,53 @@ export default function ProductDetail() {
           </div>
         </Card>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Edit product</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2"><Label>Part No.</Label><Input value={edit.part_no} onChange={e => setEdit({ ...edit, part_no: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2">
+              <Label>Labels</Label>
+              <div className="flex gap-2">
+                {(["OPTO", "NPD"] as const).map(l => (
+                  <Button key={l} type="button" size="sm" variant={edit.labels.includes(l) ? "default" : "outline"} onClick={() => toggleEditLabel(l)}>{l}</Button>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-2 space-y-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={edit.type} onValueChange={(v: any) => setEdit({ ...edit, type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="raw">Raw material</SelectItem>
+                  <SelectItem value="spare">Spare part</SelectItem>
+                  <SelectItem value="finished">Finished good</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Sub-category</Label>
+              <SearchSelect placeholder="Search sub-category…" value={edit.category_id} onChange={(v) => setEdit({ ...edit, category_id: v })}
+                options={subcats.map(c => ({ value: c.id, label: `${c.parent_name} › ${c.name}` }))} />
+            </div>
+            <div className="col-span-2 space-y-2">
+              <Label>Supplier</Label>
+              <SearchSelect placeholder="Search supplier…" value={edit.supplier_id} onChange={(v) => setEdit({ ...edit, supplier_id: v })}
+                options={suppliers.map(s => ({ value: s.id, label: s.name }))} />
+            </div>
+            <div className="space-y-2"><Label>Purchase ₹</Label><Input type="number" min={0} step="0.01" value={edit.purchase_price} onChange={e => setEdit({ ...edit, purchase_price: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Selling ₹</Label><Input type="number" min={0} step="0.01" value={edit.selling_price} onChange={e => setEdit({ ...edit, selling_price: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Stock</Label><Input type="number" min={0} value={edit.stock} onChange={e => setEdit({ ...edit, stock: e.target.value })} /></div>
+            <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={edit.reorder_level} onChange={e => setEdit({ ...edit, reorder_level: e.target.value })} /></div>
+            <div className="col-span-2 space-y-2"><Label>Location</Label><Input value={edit.location} onChange={e => setEdit({ ...edit, location: e.target.value })} /></div>
+            <Button className="col-span-2" onClick={saveEdit}>Save changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
