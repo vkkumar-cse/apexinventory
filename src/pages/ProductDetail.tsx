@@ -51,6 +51,19 @@ export default function ProductDetail() {
   const [qrUrl, setQrUrl] = useState("");
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Edit state
+  const [editOpen, setEditOpen] = useState(false);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [subcats, setSubcats] = useState<{ id: string; name: string; parent_name: string }[]>([]);
+  const [edit, setEdit] = useState({
+    name: "", part_no: "", type: "spare" as "raw" | "spare" | "finished",
+    stock: "0", reorder_level: "0", location: "",
+    supplier_id: "", category_id: "",
+    purchase_price: "0", selling_price: "0",
+    specifications: "", description: "",
+    labels: [] as ("OPTO" | "NPD")[],
+  });
+
   const productIdentifier = product ? (product.part_no ?? String(product.code)) : "";
   const productUrl = product ? `${window.location.origin}/product/${productIdentifier}` : "";
 
