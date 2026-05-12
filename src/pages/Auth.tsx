@@ -71,7 +71,7 @@ export default function Auth() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div class-Name="text-center mb-8">
+        <div className="text-center mb-8">
           <img src={apexLogo} alt="Apex Industrial Metrology LLP" className="h-20 w-20 mx-auto rounded-2xl object-cover bg-white shadow-elevated mb-4" />
           <h1 className="text-3xl font-bold tracking-tight">Apex<span className="text-primary"> Inventory</span></h1>
           <p className="text-muted-foreground text-sm mt-2">Industrial Metrology LLP — smart QR-based inventory</p>
