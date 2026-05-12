@@ -18,5 +18,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "tailwind.config.ts"]
 }
