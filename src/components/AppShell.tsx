@@ -2,8 +2,9 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Package, Truck, ScanLine, LogOut, Factory, FolderTree, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Package, Truck, ScanLine, LogOut, FolderTree, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
+import apexLogo from "@/assets/apex-logo.jpeg";
 
 export function AppShell() {
   const { user, role, signOut, isAdmin } = useAuth();
@@ -23,10 +24,8 @@ export function AppShell() {
       <header className="border-b border-border/60 backdrop-blur bg-background/80 sticky top-0 z-40">
         <div className="container flex h-16 items-center gap-4">
           <Link to="/" className="flex items-center gap-2 font-bold">
-            <div className="h-9 w-9 rounded-lg gradient-primary grid place-items-center shadow-glow">
-              <Factory className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-lg tracking-tight">FORGE<span className="text-primary">/INV</span></span>
+            <img src={apexLogo} alt="Apex Industrial Metrology LLP" className="h-9 w-9 rounded-lg object-cover bg-white" />
+            <span className="text-lg tracking-tight">Apex<span className="text-primary"> Inventory</span></span>
           </Link>
           <nav className="hidden md:flex items-center gap-1 ml-6">
             {nav.map(({ to, label, icon: Icon }) => (
