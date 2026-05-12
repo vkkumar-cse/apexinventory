@@ -37,7 +37,7 @@ export default function CategoryDetail() {
     setLoading(true);
     const { data: c } = await (supabase as any).from("categories").select("id,name,parent_id").eq("id", id).maybeSingle();
     setCat(c as Cat);
-    document.title = c ? `${(c as any).name} · Forge Inventory` : "Category · Forge Inventory";
+    document.title = c ? `${(c as any).name} · Apex Inventory` : "Category · Apex Inventory";
 
     if (c && !(c as any).parent_id) {
       // Top-level: list sub-categories + products labelled with this name

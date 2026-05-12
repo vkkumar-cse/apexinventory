@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Factory, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import apexLogo from "@/assets/apex-logo.jpeg";
 
 const signInSchema = z.object({
   email: z.string().trim().email("Invalid email").max(255),
@@ -30,7 +31,7 @@ export default function Auth() {
   const [firstUser, setFirstUser] = useState<boolean>(false);
 
   useEffect(() => {
-    document.title = "Sign in · Forge Inventory";
+    document.title = "Sign in · Apex Inventory";
     if (!loading && session) navigate("/", { replace: true });
     (async () => {
       const { count } = await supabase.from("user_roles").select("id", { count: "exact", head: true });
@@ -71,11 +72,9 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-xl gradient-primary items-center justify-center shadow-glow mb-4">
-            <Factory className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">FORGE<span className="text-primary">/INV</span></h1>
-          <p className="text-muted-foreground text-sm mt-2">Smart QR-based inventory for the factory floor</p>
+          <img src={apexLogo} alt="Apex Industrial Metrology LLP" className="h-20 w-20 mx-auto rounded-2xl object-cover bg-white shadow-elevated mb-4" />
+          <h1 className="text-3xl font-bold tracking-tight">Apex<span className="text-primary"> Inventory</span></h1>
+          <p className="text-muted-foreground text-sm mt-2">Industrial Metrology LLP — smart QR-based inventory</p>
         </div>
         <Card className="p-6 shadow-elevated">
           <Tabs value={tab} onValueChange={(v: any) => setTab(v)}>

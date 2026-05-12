@@ -14,7 +14,7 @@ export default function Scan() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    document.title = "Scan · Forge Inventory";
+    document.title = "Scan · Apex Inventory";
     supabase.from("products").select("id,code,part_no,name").order("updated_at", { ascending: false }).limit(8)
       .then(({ data }) => setRecent((data as any) ?? []));
   }, []);

@@ -11,7 +11,7 @@ export default function Categories() {
   const [counts, setCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    document.title = "Categories · Forge Inventory";
+    document.title = "Categories · Apex Inventory";
     (async () => {
       const { data } = await (supabase as any).from("categories").select("id,name").is("parent_id", null).order("name");
       setTops((data as Cat[]) ?? []);

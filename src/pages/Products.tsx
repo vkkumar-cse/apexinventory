@@ -56,7 +56,7 @@ export default function Products() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [form, setForm] = useState<typeof empty>(empty);
 
-  useEffect(() => { document.title = "Products · Forge Inventory"; load(); }, []);
+  useEffect(() => { document.title = "Products · Apex Inventory"; load(); }, []);
 
   // Prefill from approved request
   useEffect(() => {
