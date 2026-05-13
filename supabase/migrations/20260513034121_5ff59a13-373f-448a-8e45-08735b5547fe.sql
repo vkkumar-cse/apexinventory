@@ -50,8 +50,13 @@ CREATE TRIGGER on_auth_user_created
 ALTER TABLE public.products ALTER COLUMN type TYPE text USING type::text;
 ALTER TABLE public.products ALTER COLUMN type SET DEFAULT 'spare';
 
-ALTER TABLE public.product_requests ALTER COLUMN type TYPE text USING type::text;
-ALTER TABLE public.product_requests ALTER COLUMN type SET DEFAULT 'spare';
+DO $$
+BEGIN
+  IF to_regclass('public.product_requests') IS NOT NULL THEN
+    ALTER TABLE public.product_requests ALTER COLUMN type TYPE text USING type::text;
+    ALTER TABLE public.product_requests ALTER COLUMN type SET DEFAULT 'spare';
+  END IF;
+END $$;
 
 -- 4. Multiple suppliers per product
 CREATE TABLE IF NOT EXISTS public.product_suppliers (

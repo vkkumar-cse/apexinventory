@@ -64,9 +64,7 @@ export default function ProductDetail() {
     labels: [] as ("OPTO" | "NPD")[],
   });
 
-  const productIdentifier = product ? (product.part_no ?? String(product.code)) : "";
-  const productUrl = product ? `${window.location.origin}/product/${productIdentifier}` : "";
-
+const productIdentifier = product ? product.id : "";const productUrl = product ? `${window.location.origin}/products/${product.id}` : "";
   useEffect(() => { if (routeParam) { document.title = "Product · Apex Inventory"; load(); } }, [routeParam]);
 
   useEffect(() => {
@@ -402,8 +400,7 @@ export default function ProductDetail() {
           <div className="space-y-2">
             {related.map(r => (
               <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40">
-                <Link to={`/product/${r.products.part_no ?? r.products.code}`} className="hover:text-primary">
-                  <p className="text-sm font-medium"><span className="font-mono text-primary">{r.products.part_no ?? "#" + r.products.code}</span> {r.products.name}</p>
+<Link to={`/products/${r.products.id}`}>                  <p className="text-sm font-medium"><span className="font-mono text-primary">{r.products.part_no ?? "#" + r.products.code}</span> {r.products.name}</p>
                   <p className="text-xs text-muted-foreground">Stock: {r.products.stock}</p>
                 </Link>
                 <div className="flex items-center gap-2">
