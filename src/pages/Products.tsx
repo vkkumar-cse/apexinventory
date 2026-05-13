@@ -68,7 +68,7 @@ export default function Products() {
         stock: params.get("stock") ?? "0",
         reorder_level: params.get("reorder_level") ?? "0",
         location: params.get("location") ?? "",
-        supplier_id: params.get("supplier_id") ?? "",
+        supplier_ids: (params.get("supplier_id") ?? "").split(",").filter(Boolean),
         category_id: params.get("category_id") ?? "",
         purchase_price: params.get("purchase_price") ?? "0",
         selling_price: params.get("selling_price") ?? "0",
@@ -94,12 +94,13 @@ export default function Products() {
 
   async function save() {
     const part_no = form.part_no.trim() || null;
+    const primarySupplier = form.supplier_ids[0] || null;
     const parsed = schema.safeParse({
       name: form.name, type: form.type,
       stock: parseInt(form.stock || "0", 10),
       reorder_level: parseInt(form.reorder_level || "0", 10),
       location: form.location || undefined,
-      supplier_id: form.supplier_id || null,
+      supplier_id: primarySupplier,
       category_id: form.category_id || null,
       purchase_price: parseFloat(form.purchase_price || "0"),
       selling_price: parseFloat(form.selling_price || "0"),
@@ -108,8 +109,14 @@ export default function Products() {
       part_no, labels: form.labels,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
-    const { error } = await supabase.from("products").insert(parsed.data as any);
+    const { data: created, error } = await supabase.from("products").insert(parsed.data as any).select("id").single();
     if (error) { toast.error(error.message); return; }
+
+    if (created && form.supplier_ids.length > 0) {
+      await (supabase as any).from("product_suppliers").insert(
+        form.supplier_ids.map(sid => ({ product_id: created.id, supplier_id: sid }))
+      );
+    }
 
     if (requestId) {
       await supabase.from("product_requests" as any).update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", requestId);
@@ -118,6 +125,10 @@ export default function Products() {
     setOpen(false); setForm(empty); setRequestId(null);
     setParams({});
     load();
+  }
+
+  function toggleSupplier(id: string) {
+    setForm(f => ({ ...f, supplier_ids: f.supplier_ids.includes(id) ? f.supplier_ids.filter(x => x !== id) : [...f.supplier_ids, id] }));
   }
 
   function toggleLabel(l: "OPTO" | "NPD") {
