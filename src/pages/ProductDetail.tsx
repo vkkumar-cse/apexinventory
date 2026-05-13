@@ -443,16 +443,9 @@ export default function ProductDetail() {
             </div>
             <div className="col-span-2 space-y-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
             <div className="col-span-2 space-y-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={edit.type} onValueChange={(v: any) => setEdit({ ...edit, type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="raw">Raw material</SelectItem>
-                  <SelectItem value="spare">Spare part</SelectItem>
-                  <SelectItem value="finished">Finished good</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="col-span-2 space-y-2">
+              <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
+              <Input value={edit.type} onChange={e => setEdit({ ...edit, type: e.target.value })} placeholder="spare, lens, instrument…" />
             </div>
             <div className="space-y-2">
               <Label>Sub-category</Label>
