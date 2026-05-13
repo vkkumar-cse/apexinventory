@@ -19,7 +19,7 @@ import { Plus, Package, Search, FileSpreadsheet } from "lucide-react";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
-  type: z.enum(["raw", "spare", "finished"]),
+  type: z.string().trim().min(1).max(40),
   stock: z.number().int().min(0),
   reorder_level: z.number().int().min(0),
   location: z.string().trim().max(80).optional(),
@@ -34,7 +34,7 @@ const schema = z.object({
 });
 
 type Product = {
-  id: string; code: number; part_no: string | null; name: string; type: "raw" | "spare" | "finished";
+  id: string; code: number; part_no: string | null; name: string; type: string;
   stock: number; reorder_level: number; location: string | null;
   purchase_price: number; selling_price: number; specifications: string | null;
   description: string | null; labels: ("OPTO" | "NPD")[];
@@ -42,7 +42,7 @@ type Product = {
   categories: { id: string; name: string } | null;
 };
 
-const empty = { name: "", part_no: "", type: "spare" as "raw" | "spare" | "finished", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0", specifications: "", description: "", labels: [] as ("OPTO" | "NPD")[] };
+const empty = { name: "", part_no: "", type: "spare", stock: "0", reorder_level: "0", location: "", supplier_ids: [] as string[], category_id: "", purchase_price: "0", selling_price: "0", specifications: "", description: "", labels: [] as ("OPTO" | "NPD")[] };
 
 export default function Products() {
   const { isAdmin } = useAuth();
