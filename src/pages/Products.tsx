@@ -204,18 +204,16 @@ export default function Products() {
                     <Label>Description</Label>
                     <Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="raw">Raw material</SelectItem>
-                        <SelectItem value="spare">Spare part</SelectItem>
-                        <SelectItem value="finished">Finished good</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="col-span-2 space-y-2">
+                    <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
+                    <Input list="product-types" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} placeholder="spare, lens, instrument…" />
+                    <datalist id="product-types">
+                      {Array.from(new Set(["raw", "spare", "finished", ...items.map(i => i.type).filter(Boolean)])).map(t => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
                   </div>
-                  <div className="space-y-2">
+                  <div className="col-span-2 space-y-2">
                     <Label>Sub-category</Label>
                     <SearchSelect
                       placeholder="Search sub-category…"
@@ -225,13 +223,17 @@ export default function Products() {
                     />
                   </div>
                   <div className="col-span-2 space-y-2">
-                    <Label>Supplier</Label>
-                    <SearchSelect
-                      placeholder="Search supplier…"
-                      value={form.supplier_id}
-                      onChange={(v) => setForm({ ...form, supplier_id: v })}
-                      options={suppliers.map(s => ({ value: s.id, label: s.name }))}
-                    />
+                    <Label>Suppliers <span className="text-muted-foreground font-normal">(select one or more)</span></Label>
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 rounded border border-border/60">
+                      {suppliers.length === 0 && <p className="text-xs text-muted-foreground">No suppliers yet.</p>}
+                      {suppliers.map(s => (
+                        <Button key={s.id} type="button" size="sm"
+                          variant={form.supplier_ids.includes(s.id) ? "default" : "outline"}
+                          onClick={() => toggleSupplier(s.id)}>
+                          {s.name}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                   <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
                   <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
