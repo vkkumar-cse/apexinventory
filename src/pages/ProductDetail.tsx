@@ -56,7 +56,7 @@ export default function ProductDetail() {
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [subcats, setSubcats] = useState<{ id: string; name: string; parent_name: string }[]>([]);
   const [edit, setEdit] = useState({
-    name: "", part_no: "", type: "spare" as "raw" | "spare" | "finished",
+    name: "", part_no: "", type: "spare",
     stock: "0", reorder_level: "0", location: "",
     supplier_id: "", category_id: "",
     purchase_price: "0", selling_price: "0",
@@ -202,7 +202,7 @@ export default function ProductDetail() {
     if (!product) return;
     const editSchema = z.object({
       name: z.string().trim().min(1).max(120),
-      type: z.enum(["raw", "spare", "finished"]),
+      type: z.string().trim().min(1).max(40),
       stock: z.number().int().min(0),
       reorder_level: z.number().int().min(0),
       purchase_price: z.number().min(0),
