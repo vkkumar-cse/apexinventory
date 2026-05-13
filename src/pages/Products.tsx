@@ -19,7 +19,7 @@ import { Plus, Package, Search, FileSpreadsheet } from "lucide-react";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
-  type: z.enum(["raw", "spare", "finished"]),
+  type: z.string().trim().min(1).max(40),
   stock: z.number().int().min(0),
   reorder_level: z.number().int().min(0),
   location: z.string().trim().max(80).optional(),
@@ -34,7 +34,7 @@ const schema = z.object({
 });
 
 type Product = {
-  id: string; code: number; part_no: string | null; name: string; type: "raw" | "spare" | "finished";
+  id: string; code: number; part_no: string | null; name: string; type: string;
   stock: number; reorder_level: number; location: string | null;
   purchase_price: number; selling_price: number; specifications: string | null;
   description: string | null; labels: ("OPTO" | "NPD")[];
@@ -42,7 +42,7 @@ type Product = {
   categories: { id: string; name: string } | null;
 };
 
-const empty = { name: "", part_no: "", type: "spare" as "raw" | "spare" | "finished", stock: "0", reorder_level: "0", location: "", supplier_id: "", category_id: "", purchase_price: "0", selling_price: "0", specifications: "", description: "", labels: [] as ("OPTO" | "NPD")[] };
+const empty = { name: "", part_no: "", type: "spare", stock: "0", reorder_level: "0", location: "", supplier_ids: [] as string[], category_id: "", purchase_price: "0", selling_price: "0", specifications: "", description: "", labels: [] as ("OPTO" | "NPD")[] };
 
 export default function Products() {
   const { isAdmin } = useAuth();
@@ -68,7 +68,7 @@ export default function Products() {
         stock: params.get("stock") ?? "0",
         reorder_level: params.get("reorder_level") ?? "0",
         location: params.get("location") ?? "",
-        supplier_id: params.get("supplier_id") ?? "",
+        supplier_ids: (params.get("supplier_id") ?? "").split(",").filter(Boolean),
         category_id: params.get("category_id") ?? "",
         purchase_price: params.get("purchase_price") ?? "0",
         selling_price: params.get("selling_price") ?? "0",
@@ -94,12 +94,13 @@ export default function Products() {
 
   async function save() {
     const part_no = form.part_no.trim() || null;
+    const primarySupplier = form.supplier_ids[0] || null;
     const parsed = schema.safeParse({
       name: form.name, type: form.type,
       stock: parseInt(form.stock || "0", 10),
       reorder_level: parseInt(form.reorder_level || "0", 10),
       location: form.location || undefined,
-      supplier_id: form.supplier_id || null,
+      supplier_id: primarySupplier,
       category_id: form.category_id || null,
       purchase_price: parseFloat(form.purchase_price || "0"),
       selling_price: parseFloat(form.selling_price || "0"),
@@ -108,8 +109,14 @@ export default function Products() {
       part_no, labels: form.labels,
     });
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
-    const { error } = await supabase.from("products").insert(parsed.data as any);
+    const { data: created, error } = await supabase.from("products").insert(parsed.data as any).select("id").single();
     if (error) { toast.error(error.message); return; }
+
+    if (created && form.supplier_ids.length > 0) {
+      await (supabase as any).from("product_suppliers").insert(
+        form.supplier_ids.map(sid => ({ product_id: created.id, supplier_id: sid }))
+      );
+    }
 
     if (requestId) {
       await supabase.from("product_requests" as any).update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", requestId);
@@ -118,6 +125,10 @@ export default function Products() {
     setOpen(false); setForm(empty); setRequestId(null);
     setParams({});
     load();
+  }
+
+  function toggleSupplier(id: string) {
+    setForm(f => ({ ...f, supplier_ids: f.supplier_ids.includes(id) ? f.supplier_ids.filter(x => x !== id) : [...f.supplier_ids, id] }));
   }
 
   function toggleLabel(l: "OPTO" | "NPD") {
@@ -193,18 +204,16 @@ export default function Products() {
                     <Label>Description</Label>
                     <Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="raw">Raw material</SelectItem>
-                        <SelectItem value="spare">Spare part</SelectItem>
-                        <SelectItem value="finished">Finished good</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="col-span-2 space-y-2">
+                    <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
+                    <Input list="product-types" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} placeholder="spare, lens, instrument…" />
+                    <datalist id="product-types">
+                      {Array.from(new Set(["raw", "spare", "finished", ...items.map(i => i.type).filter(Boolean)])).map(t => (
+                        <option key={t} value={t} />
+                      ))}
+                    </datalist>
                   </div>
-                  <div className="space-y-2">
+                  <div className="col-span-2 space-y-2">
                     <Label>Sub-category</Label>
                     <SearchSelect
                       placeholder="Search sub-category…"
@@ -214,13 +223,17 @@ export default function Products() {
                     />
                   </div>
                   <div className="col-span-2 space-y-2">
-                    <Label>Supplier</Label>
-                    <SearchSelect
-                      placeholder="Search supplier…"
-                      value={form.supplier_id}
-                      onChange={(v) => setForm({ ...form, supplier_id: v })}
-                      options={suppliers.map(s => ({ value: s.id, label: s.name }))}
-                    />
+                    <Label>Suppliers <span className="text-muted-foreground font-normal">(select one or more)</span></Label>
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 rounded border border-border/60">
+                      {suppliers.length === 0 && <p className="text-xs text-muted-foreground">No suppliers yet.</p>}
+                      {suppliers.map(s => (
+                        <Button key={s.id} type="button" size="sm"
+                          variant={form.supplier_ids.includes(s.id) ? "default" : "outline"}
+                          onClick={() => toggleSupplier(s.id)}>
+                          {s.name}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                   <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
                   <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>

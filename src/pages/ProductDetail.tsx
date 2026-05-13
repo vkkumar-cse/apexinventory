@@ -56,7 +56,7 @@ export default function ProductDetail() {
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [subcats, setSubcats] = useState<{ id: string; name: string; parent_name: string }[]>([]);
   const [edit, setEdit] = useState({
-    name: "", part_no: "", type: "spare" as "raw" | "spare" | "finished",
+    name: "", part_no: "", type: "spare",
     stock: "0", reorder_level: "0", location: "",
     supplier_id: "", category_id: "",
     purchase_price: "0", selling_price: "0",
@@ -202,7 +202,7 @@ export default function ProductDetail() {
     if (!product) return;
     const editSchema = z.object({
       name: z.string().trim().min(1).max(120),
-      type: z.enum(["raw", "spare", "finished"]),
+      type: z.string().trim().min(1).max(40),
       stock: z.number().int().min(0),
       reorder_level: z.number().int().min(0),
       purchase_price: z.number().min(0),
@@ -443,16 +443,9 @@ export default function ProductDetail() {
             </div>
             <div className="col-span-2 space-y-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
             <div className="col-span-2 space-y-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={edit.type} onValueChange={(v: any) => setEdit({ ...edit, type: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="raw">Raw material</SelectItem>
-                  <SelectItem value="spare">Spare part</SelectItem>
-                  <SelectItem value="finished">Finished good</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="col-span-2 space-y-2">
+              <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
+              <Input value={edit.type} onChange={e => setEdit({ ...edit, type: e.target.value })} placeholder="spare, lens, instrument…" />
             </div>
             <div className="space-y-2">
               <Label>Sub-category</Label>

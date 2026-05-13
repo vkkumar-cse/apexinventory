@@ -65,7 +65,7 @@ export default function Auth() {
     });
     setBusy(false);
     if (error) { toast.error(error.message); return; }
-    toast.success(firstUser ? "Admin account created." : "Account created. Check your email if confirmation is required, then sign in.");
+    toast.success(firstUser ? "Admin account created — signing you in." : "Account created. An admin must approve your account before you can sign in.");
   }
 
   return (
@@ -102,7 +102,7 @@ export default function Auth() {
               <p className="text-xs text-muted-foreground">
                 {firstUser
                   ? "No accounts exist yet — the first sign-up becomes the Admin."
-                  : "New accounts are created as Workers. The first registered user is the Admin."}
+                  : "New accounts are created as Workers and require admin approval before access is granted."}
               </p>
               <div className="space-y-2">
                 <Label>Display name</Label>

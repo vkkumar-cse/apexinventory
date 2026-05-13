@@ -70,7 +70,7 @@ export type Database = {
           status: string
           stock: number
           supplier_id: string | null
-          type: Database["public"]["Enums"]["product_type"]
+          type: string
         }
         Insert: {
           category_id?: string | null
@@ -92,7 +92,7 @@ export type Database = {
           status?: string
           stock?: number
           supplier_id?: string | null
-          type?: Database["public"]["Enums"]["product_type"]
+          type?: string
         }
         Update: {
           category_id?: string | null
@@ -114,7 +114,7 @@ export type Database = {
           status?: string
           stock?: number
           supplier_id?: string | null
-          type?: Database["public"]["Enums"]["product_type"]
+          type?: string
         }
         Relationships: [
           {
@@ -126,6 +126,42 @@ export type Database = {
           },
           {
             foreignKeyName: "product_requests_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_suppliers: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          supplier_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          supplier_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_suppliers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_suppliers_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
@@ -151,7 +187,7 @@ export type Database = {
           specifications: string | null
           stock: number
           supplier_id: string | null
-          type: Database["public"]["Enums"]["product_type"]
+          type: string
           updated_at: string
         }
         Insert: {
@@ -171,7 +207,7 @@ export type Database = {
           specifications?: string | null
           stock?: number
           supplier_id?: string | null
-          type: Database["public"]["Enums"]["product_type"]
+          type?: string
           updated_at?: string
         }
         Update: {
@@ -191,7 +227,7 @@ export type Database = {
           specifications?: string | null
           stock?: number
           supplier_id?: string | null
-          type?: Database["public"]["Enums"]["product_type"]
+          type?: string
           updated_at?: string
         }
         Relationships: [
@@ -217,18 +253,21 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          status: string
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           email?: string | null
           id: string
+          status?: string
         }
         Update: {
           created_at?: string
           display_name?: string | null
           email?: string | null
           id?: string
+          status?: string
         }
         Relationships: []
       }
