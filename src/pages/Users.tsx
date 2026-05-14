@@ -42,25 +42,46 @@ export default function Users() {
       toast.error("Cannot remove the last approved admin.");
       return;
     }
+    if (r.id === me?.id && next !== "approved") {
+  toast.error("You cannot modify your own admin access.");
+  return;
+}
     const { error } = await supabase.from("profiles").update({ status: next } as any).eq("id", r.id);
     if (error) { toast.error(error.message); return; }
     toast.success(`User ${next}`);
-    load();
+
+await load();
   }
 
-  async function setRole(r: Row, next: "admin" | "worker") {
-    if (r.role === next) return;
-    if (r.role === "admin" && next === "worker" && adminCount <= 1) {
-      toast.error("Cannot demote the last admin.");
-      return;
-    }
-    const { error: delErr } = await supabase.from("user_roles").delete().eq("user_id", r.id);
-    if (delErr) { toast.error(delErr.message); return; }
-    const { error: insErr } = await supabase.from("user_roles").insert({ user_id: r.id, role: next });
-    if (insErr) { toast.error(insErr.message); return; }
-    toast.success(`Role set to ${next}`);
-    load();
+async function setRole(r: Row, next: "admin" | "worker") {
+  if (r.role === next) return;
+
+  if (r.role === "admin" && next === "worker" && adminCount <= 1) {
+    toast.error("Cannot demote the last admin.");
+    return;
   }
+
+  const { error } = await supabase
+    .from("user_roles")
+    .upsert(
+      {
+        user_id: r.id,
+        role: next,
+      },
+      {
+        onConflict: "user_id",
+      }
+    );
+
+  if (error) {
+    toast.error(error.message);
+    return;
+  }
+
+  toast.success(`Role set to ${next}`);
+
+  await load();
+}
 
   if (!isAdmin) return <p className="text-center text-muted-foreground py-12">Admins only.</p>;
 

@@ -157,7 +157,7 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {products.filter(p => p.stock <= p.reorder_level).slice(0, 6).map(p => (
-              <Link key={p.id} to={`/product/${p.part_no ?? p.code}`} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 hover:bg-secondary transition">
+              <Link key={p.id} to={`/product/${p.id}`} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 hover:bg-secondary transition">
                 <div>
                   <p className="font-medium text-sm"><span className="font-mono text-primary">{p.part_no ?? "#" + p.code}</span> {p.name}</p>
                   <p className="text-xs text-muted-foreground">Stock: {p.stock} / Reorder at: {p.reorder_level}</p>

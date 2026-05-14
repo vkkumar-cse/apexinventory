@@ -147,7 +147,7 @@ export default function CategoryDetail() {
         </h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {products.map(p => (
-            <Link key={p.id} to={`/product/${p.part_no ?? p.code}`}>
+            <Link key={p.id} to={`/product/${p.id}`}>
               <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">

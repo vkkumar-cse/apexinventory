@@ -55,6 +55,7 @@ export default function Products() {
   const [open, setOpen] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [form, setForm] = useState<typeof empty>(empty);
+  const [supplierSearch, setSupplierSearch] = useState("");
 
   useEffect(() => { document.title = "Products · Apex Inventory"; load(); }, []);
 
@@ -122,8 +123,10 @@ export default function Products() {
       await supabase.from("product_requests" as any).update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", requestId);
     }
     toast.success("Product created");
-    setOpen(false); setForm(empty); setRequestId(null);
-    setParams({});
+setForm(empty);
+setSupplierSearch("");
+setOpen(false);
+setRequestId(null);    setParams({});
     load();
   }
 
@@ -157,6 +160,13 @@ export default function Products() {
     XLSX.writeFile(wb, `inventory-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
+  const filteredSuppliers =
+  supplierSearch.trim().length === 0
+    ? []
+    : suppliers.filter((s) =>
+        s.name.toLowerCase().includes(supplierSearch.toLowerCase())
+      );
+
   const filtered = items.filter(p => {
     if (labelFilter !== "all" && !(p.labels ?? []).includes(labelFilter)) return false;
     const needle = q.toLowerCase();
@@ -178,10 +188,17 @@ export default function Products() {
             <FileSpreadsheet className="h-4 w-4 mr-2" />Export
           </Button>
           {isAdmin && (
-            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setRequestId(null); setParams({}); } }}>
+            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) {
+  setRequestId(null);
+  setParams({});
+  setForm(empty);
+  setSupplierSearch("");
+} }}>
               <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New product</Button></DialogTrigger>
-              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>{requestId ? "Approve & create product" : "Add product"}</DialogTitle></DialogHeader>
+<DialogContent
+  className="max-w-lg max-h-[90vh] overflow-y-auto"
+  onInteractOutside={(e) => e.preventDefault()}
+>                <DialogHeader><DialogTitle>{requestId ? "Approve & create product" : "Add product"}</DialogTitle></DialogHeader>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
                   <div className="col-span-2 space-y-2">
@@ -223,18 +240,50 @@ export default function Products() {
                     />
                   </div>
                   <div className="col-span-2 space-y-2">
-                    <Label>Suppliers <span className="text-muted-foreground font-normal">(select one or more)</span></Label>
-                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 rounded border border-border/60">
-                      {suppliers.length === 0 && <p className="text-xs text-muted-foreground">No suppliers yet.</p>}
-                      {suppliers.map(s => (
-                        <Button key={s.id} type="button" size="sm"
-                          variant={form.supplier_ids.includes(s.id) ? "default" : "outline"}
-                          onClick={() => toggleSupplier(s.id)}>
-                          {s.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
+  <Label>
+    Suppliers{" "}
+    <span className="text-muted-foreground font-normal">
+      (search and select)
+    </span>
+  </Label>
+
+  <Input
+    placeholder="Search supplier..."
+    value={supplierSearch}
+    onChange={(e) => setSupplierSearch(e.target.value)}
+  />
+
+  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 rounded border border-border/60">
+    {supplierSearch.trim().length === 0 && (
+      <p className="text-xs text-muted-foreground">
+        Type to search suppliers.
+      </p>
+    )}
+
+    {supplierSearch.trim().length > 0 &&
+      filteredSuppliers.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No supplier found.
+        </p>
+      )}
+
+    {filteredSuppliers.map((s) => (
+      <Button
+        key={s.id}
+        type="button"
+        size="sm"
+        variant={
+          form.supplier_ids.includes(s.id)
+            ? "default"
+            : "outline"
+        }
+        onClick={() => toggleSupplier(s.id)}
+      >
+        {s.name}
+      </Button>
+    ))}
+  </div>
+</div>
                   <div className="space-y-2"><Label>Purchase price (₹)</Label><Input type="number" min={0} step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
                   <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
                   <div className="space-y-2"><Label>Initial stock</Label><Input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
@@ -262,7 +311,7 @@ export default function Products() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(p => (
-          <Link key={p.id} to={`/product/${p.part_no ?? p.code}`}>
+          <Link key={p.id} to={`/product/${p.id}`}>
             <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
