@@ -101,7 +101,7 @@ export default function Auth() {
             <TabsContent value="signup" className="space-y-4">
               <p className="text-xs text-muted-foreground">
                 {firstUser
-                  ? "No accounts exist yet — the first sign-up becomes the Admin."
+                  ? "Sign up to request access."
                   : "New accounts are created as Workers and require admin approval before access is granted."}
               </p>
               <div className="space-y-2">

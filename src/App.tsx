@@ -1,3 +1,4 @@
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -14,6 +15,7 @@ import Categories from "./pages/Categories";
 import CategoryDetail from "./pages/CategoryDetail";
 import Suppliers from "./pages/Suppliers";
 import Scan from "./pages/Scan";
+import Transactions from "@/pages/Transaction";
 import Requests from "./pages/Requests";
 import Users from "./pages/Users";
 import NotFound from "./pages/NotFound";
@@ -38,6 +40,7 @@ const App = () => (
               <Route path="/suppliers" element={<ProtectedRoute adminOnly><Suppliers /></ProtectedRoute>} />
               <Route path="/scan" element={<Scan />} />
               <Route path="/requests" element={<Requests />} />
+              <Route path="/transactions" element={<Transactions />} />
               <Route path="/users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />

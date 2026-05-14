@@ -185,16 +185,48 @@ export default function Requests() {
                 </div>
                 {r.note && <p className="text-xs italic mt-2 bg-secondary/40 px-2 py-1 rounded">"{r.note}"</p>}
               </div>
-              {isAdmin && r.status === "pending" && (
+              {isAdmin && (
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => approve(r)}><Check className="h-4 w-4 mr-1" />Approve</Button>
-                  <Button size="sm" variant="outline" onClick={() => reject(r)}><X className="h-4 w-4 mr-1" />Reject</Button>
+                  {r.status === "pending" && (
+                    <>
+                      <Button size="sm" onClick={() => approve(r)}>
+                        <Check className="h-4 w-4 mr-1" />Approve
+                      </Button>
+
+                      <Button size="sm" variant="outline" onClick={() => reject(r)}>
+                        <X className="h-4 w-4 mr-1" />Reject
+                      </Button>
+                    </>
+                  )}
+
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={async () => {
+                      const ok = confirm("Delete this request permanently?");
+                      if (!ok) return;
+
+                      const { error } = await supabase
+                        .from("product_requests" as any)
+                        .delete()
+                        .eq("id", r.id);
+
+                      if (error) {
+                        toast.error(error.message);
+                        return;
+                      }
+
+                      toast.success("Request deleted");
+                      load();
+                    }}
+                  >
+                    Delete
+                  </Button>
                 </div>
               )}
             </div>
           </Card>
         ))}
-        {items.length === 0 && <Card className="p-12 text-center text-muted-foreground">No requests yet.</Card>}
       </div>
     </div>
   );

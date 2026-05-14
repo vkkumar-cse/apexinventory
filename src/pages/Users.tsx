@@ -83,6 +83,37 @@ async function setRole(r: Row, next: "admin" | "worker") {
   await load();
 }
 
+async function deleteRejectedUser(r: Row) {
+  if (r.status !== "rejected") return;
+
+  const ok = confirm(`Delete rejected user ${r.email}?`);
+  if (!ok) return;
+
+  const { error: roleError } = await supabase
+    .from("user_roles")
+    .delete()
+    .eq("user_id", r.id);
+
+  if (roleError) {
+    toast.error(roleError.message);
+    return;
+  }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .delete()
+    .eq("id", r.id);
+
+  if (profileError) {
+    toast.error(profileError.message);
+    return;
+  }
+
+  toast.success("Rejected user deleted");
+
+  await load();
+}
+
   if (!isAdmin) return <p className="text-center text-muted-foreground py-12">Admins only.</p>;
 
   const visible = rows.filter(r => tab === "all" || r.status === tab);
@@ -135,8 +166,24 @@ async function setRole(r: Row, next: "admin" | "worker") {
                   <Button size="sm" variant="outline" onClick={() => setStatus(r, "rejected")} disabled={r.id === me?.id}><X className="h-3 w-3 mr-1" />Reject</Button>
                 )}
                 {r.status === "rejected" && (
-                  <Button size="sm" variant="outline" onClick={() => setStatus(r, "pending")}>Move to pending</Button>
-                )}
+  <>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => setStatus(r, "pending")}
+    >
+      Move to pending
+    </Button>
+
+    <Button
+      size="sm"
+      variant="destructive"
+      onClick={() => deleteRejectedUser(r)}
+    >
+      Delete
+    </Button>
+  </>
+)}
               </div>
 
               <div className="space-y-1">

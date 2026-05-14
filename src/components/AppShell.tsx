@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Package, Truck, ScanLine, LogOut, FolderTree, ClipboardList, Users as UsersIcon } from "lucide-react";
+import { LayoutDashboard, Package, Truck, ScanLine, LogOut, FolderTree, ClipboardList, Users as UsersIcon, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apexLogo from "@/assets/apex-logo.jpeg";
 
@@ -15,6 +15,12 @@ export function AppShell() {
     { to: "/categories", label: "Categories", icon: FolderTree, show: true },
     { to: "/products", label: "Products", icon: Package, show: true },
     { to: "/suppliers", label: "Suppliers", icon: Truck, show: isAdmin },
+    {
+  to: "/transactions",
+  label: "Transactions",
+  icon: History,
+  show: true,
+},
     { to: "/requests", label: "Requests", icon: ClipboardList, show: true },
     { to: "/scan", label: "Scan", icon: ScanLine, show: true },
     { to: "/users", label: "Users", icon: UsersIcon, show: isAdmin },

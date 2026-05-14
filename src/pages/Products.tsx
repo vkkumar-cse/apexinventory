@@ -45,7 +45,7 @@ type Product = {
 const empty = { name: "", part_no: "", type: "spare", stock: "0", reorder_level: "0", location: "", supplier_ids: [] as string[], category_id: "", purchase_price: "0", selling_price: "0", specifications: "", description: "", labels: [] as ("OPTO" | "NPD")[] };
 
 export default function Products() {
-  const { isAdmin } = useAuth();
+  const { isAdmin ,user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
@@ -120,8 +120,20 @@ export default function Products() {
     }
 
     if (requestId) {
-      await supabase.from("product_requests" as any).update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", requestId);
-    }
+  const { error: reqError } = await supabase
+    .from("product_requests" as any)
+    .update({
+      status: "approved",
+      reviewed_by: user?.id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq("id", requestId);
+
+  if (reqError) {
+    toast.error(reqError.message);
+    return;
+  }
+}
     toast.success("Product created");
 setForm(empty);
 setSupplierSearch("");
@@ -160,6 +172,69 @@ setRequestId(null);    setParams({});
     XLSX.writeFile(wb, `inventory-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
+  async function importExcel(e: React.ChangeEvent<HTMLInputElement>) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const row of rows) {
+      const name = String(row["Name"] ?? "").trim();
+      if (!name) {
+        skipped++;
+        continue;
+      }
+
+      const labels = String(row["Labels"] ?? "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter((x) => x === "OPTO" || x === "NPD");
+
+      const supplierName = String(row["Supplier"] ?? "").trim();
+      const supplier = suppliers.find(
+        (s) => s.name.toLowerCase() === supplierName.toLowerCase()
+      );
+
+      const subCategoryName = String(row["Sub-category"] ?? "").trim();
+      const subcat = subcats.find(
+        (c) => c.name.toLowerCase() === subCategoryName.toLowerCase()
+      );
+
+      const { error } = await supabase.from("products").insert({
+        part_no: String(row["Part No."] ?? "").trim() || null,
+        name,
+        specifications: String(row["Specifications"] ?? "").trim() || null,
+        labels,
+        type: String(row["Type"] ?? "spare").trim() || "spare",
+        category_id: subcat?.id ?? null,
+        supplier_id: supplier?.id ?? null,
+        location: String(row["Location"] ?? "").trim() || null,
+        stock: Number(row["Stock"] ?? 0),
+        reorder_level: Number(row["Reorder level"] ?? 0),
+        purchase_price: Number(row["Purchase ₹"] ?? 0),
+        selling_price: Number(row["Selling ₹"] ?? 0),
+      } as any);
+
+      if (error) skipped++;
+      else imported++;
+    }
+
+    toast.success(`Imported ${imported} products. Skipped ${skipped}.`);
+    await load();
+  } catch (err: any) {
+    toast.error(err.message || "Failed to import Excel");
+  } finally {
+    e.target.value = "";
+  }
+}
+
   const filteredSuppliers =
   supplierSearch.trim().length === 0
     ? []
@@ -187,6 +262,24 @@ setRequestId(null);    setParams({});
           <Button variant="outline" onClick={exportExcel} disabled={items.length === 0}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />Export
           </Button>
+          {isAdmin && (
+  <>
+    <input
+      id="excel-import"
+      type="file"
+      accept=".xlsx,.xls"
+      className="hidden"
+      onChange={importExcel}
+    />
+    <Button
+      variant="outline"
+      onClick={() => document.getElementById("excel-import")?.click()}
+    >
+      <FileSpreadsheet className="h-4 w-4 mr-2" />
+      Import
+    </Button>
+  </>
+)}
           {isAdmin && (
             <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) {
   setRequestId(null);
@@ -273,13 +366,14 @@ setRequestId(null);    setParams({});
         type="button"
         size="sm"
         variant={
-          form.supplier_ids.includes(s.id)
-            ? "default"
-            : "outline"
-        }
+  form.supplier_ids.includes(s.id)
+    ? "default"
+    : "secondary"
+}
         onClick={() => toggleSupplier(s.id)}
       >
         {s.name}
+        {form.supplier_ids.includes(s.id) && " ✓"}
       </Button>
     ))}
   </div>
