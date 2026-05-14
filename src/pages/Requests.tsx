@@ -111,7 +111,8 @@ export default function Requests() {
           <h1 className="text-3xl font-bold tracking-tight">Product Requests</h1>
           <p className="text-muted-foreground mt-1">{isAdmin ? "Review and approve worker requests." : "Request a new product to be added by an admin."}</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        {!isAdmin && (
+  <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New request</Button></DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Request a product</DialogTitle></DialogHeader>
@@ -157,6 +158,7 @@ export default function Requests() {
             </div>
           </DialogContent>
         </Dialog>
+)}
       </div>
 
       <div className="grid gap-4">
