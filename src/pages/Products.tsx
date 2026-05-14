@@ -49,6 +49,7 @@ export default function Products() {
   const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [productSupplierMap, setProductSupplierMap] = useState<Record<string, string[]>>({});
   const [subcats, setSubcats] = useState<{ id: string; name: string; parent_name: string }[]>([]);
   const [q, setQ] = useState("");
   const [labelFilter, setLabelFilter] = useState<"all" | "OPTO" | "NPD">("all");
@@ -82,16 +83,59 @@ export default function Products() {
     }
   }, [params, isAdmin]);
 
-  async function load() {
-    const [p, s, c] = await Promise.all([
-      supabase.from("products").select("id,code,part_no,name,type,stock,reorder_level,location,purchase_price,selling_price,specifications,description,labels, suppliers(name), categories(id,name)").order("code"),
-      supabase.from("suppliers").select("id,name").order("name"),
-      (supabase as any).from("categories").select("id,name,parent:parent_id(name)").not("parent_id", "is", null).order("name"),
-    ]);
-    setItems((p.data as any) ?? []);
-    setSuppliers(s.data ?? []);
-    setSubcats(((c.data as any) ?? []).map((x: any) => ({ id: x.id, name: x.name, parent_name: x.parent?.name ?? "" })));
+async function load() {
+  const [p, s, c] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        "id,code,part_no,name,type,stock,reorder_level,location,purchase_price,selling_price,specifications,description,labels, suppliers(name), categories(id,name)"
+      )
+      .order("code"),
+
+    supabase.from("suppliers").select("id,name").order("name"),
+
+    (supabase as any)
+      .from("categories")
+      .select("id,name,parent:parent_id(name)")
+      .not("parent_id", "is", null)
+      .order("name"),
+  ]);
+
+  setItems((p.data as any) ?? []);
+  setSuppliers(s.data ?? []);
+
+  setSubcats(
+    ((c.data as any) ?? []).map((x: any) => ({
+      id: x.id,
+      name: x.name,
+      parent_name: x.parent?.name ?? "",
+    }))
+  );
+
+  // MULTIPLE SUPPLIER FETCH
+  const productIds = ((p.data as any) ?? []).map((item: any) => item.id);
+
+  if (productIds.length > 0) {
+    const { data: ps } = await supabase
+      .from("product_suppliers" as any)
+      .select("product_id, suppliers(name)")
+      .in("product_id", productIds);
+
+    const map: Record<string, string[]> = {};
+
+    ((ps as any) ?? []).forEach((row: any) => {
+      if (!map[row.product_id]) {
+        map[row.product_id] = [];
+      }
+
+      if (row.suppliers?.name) {
+        map[row.product_id].push(row.suppliers.name);
+      }
+    });
+
+    setProductSupplierMap(map);
   }
+}
 
   async function save() {
     const part_no = form.part_no.trim() || null;
@@ -112,6 +156,17 @@ export default function Products() {
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     const { data: created, error } = await supabase.from("products").insert(parsed.data as any).select("id").single();
     if (error) { toast.error(error.message); return; }
+
+    if (created && form.supplier_ids.length > 0) {
+  const supplierRows = form.supplier_ids.map((sid) => ({
+    product_id: created.id,
+    supplier_id: sid,
+  }));
+
+  await supabase
+    .from("product_suppliers")
+    .insert(supplierRows);
+}
 
     if (created && form.supplier_ids.length > 0) {
       await (supabase as any).from("product_suppliers").insert(
@@ -431,8 +486,11 @@ setRequestId(null);    setParams({});
                 <span className="px-1.5 py-0.5 rounded bg-secondary uppercase tracking-wider">{p.type}</span>
                 {p.categories?.name && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{p.categories.name}</span>}
                 {p.location && <span>📍 {p.location}</span>}
-                {p.suppliers?.name && <span className="truncate">· {p.suppliers.name}</span>}
-              </div>
+{productSupplierMap[p.id]?.length > 0 && (
+  <span className="truncate">
+    · {productSupplierMap[p.id].join(", ")}
+  </span>
+)}              </div>
             </Card>
           </Link>
         ))}

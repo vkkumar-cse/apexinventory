@@ -40,6 +40,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
+  const [productSuppliers, setProductSuppliers] = useState<string[]>([]);
   const [parentCat, setParentCat] = useState<{ id: string; name: string } | null>(null);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
@@ -83,6 +84,16 @@ const productIdentifier = product ? product.id : "";const productUrl = product ?
     const { data: p } = await query.maybeSingle();
 
     if (!p) { setProduct(null); setLoading(false); return; }
+    const { data: ps } = await supabase
+  .from("product_suppliers" as any)
+  .select("suppliers(name)")
+  .eq("product_id", p.id);
+
+setProductSuppliers(
+  ((ps as any) ?? [])
+    .map((x: any) => x.suppliers?.name)
+    .filter(Boolean)
+);
 
     let parent: any = null;
     if ((p as any).categories?.parent_id) {
@@ -259,8 +270,10 @@ const productIdentifier = product ? product.id : "";const productUrl = product ?
     { label: "Category", value: parentCat ? <Link className="text-primary hover:underline" to={`/categories/${parentCat.id}`}>{parentCat.name}</Link> : "—" },
     { label: "Sub-category", value: product.categories ? <Link className="text-primary hover:underline" to={`/categories/${product.categories.id}`}>{product.categories.name}</Link> : "—" },
     { label: "Labels", value: <div className="flex gap-1">{(product.labels ?? []).map(l => <Badge key={l} variant="outline">{l}</Badge>)}{(product.labels ?? []).length === 0 && "—"}</div> },
-    { label: "Supplier", value: product.suppliers?.name ?? "—" },
-    ...(isAdmin ? [{ label: "Purchase price", value: `₹${Number(product.purchase_price).toFixed(2)}` }] : []),
+{
+  label: "Suppliers",
+  value: productSuppliers.length > 0 ? productSuppliers.join(", ") : "—",
+},    ...(isAdmin ? [{ label: "Purchase price", value: `₹${Number(product.purchase_price).toFixed(2)}` }] : []),
     { label: "Selling price", value: <span className="text-success">₹{Number(product.selling_price).toFixed(2)}</span> },
     { label: "Current stock", value: <span className="font-bold">{product.stock}</span> },
     { label: "Reorder level", value: product.reorder_level },
