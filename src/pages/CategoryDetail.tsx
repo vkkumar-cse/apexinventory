@@ -95,7 +95,7 @@ export default function CategoryDetail() {
               <DialogContent className="max-w-sm">
                 <DialogHeader><DialogTitle>Add sub-category under {cat.name}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
-                  <div className="space-y-2"><Label>Name</Label><Input value={newSub} onChange={e => setNewSub(e.target.value)} placeholder="e.g. Lens, Mirror, Vernier Caliper" /></div>
+                  <div className="space-y-2"><Label>Name</Label><Input value={newSub} onChange={e => setNewSub(e.target.value)} placeholder="Enter sub-category name" /></div>
                   <Button className="w-full" onClick={addSub}>Create</Button>
                 </div>
               </DialogContent>
