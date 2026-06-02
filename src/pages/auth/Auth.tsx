@@ -31,7 +31,7 @@ export default function Auth() {
   const [firstUser, setFirstUser] = useState<boolean>(false);
 
   useEffect(() => {
-    document.title = "Sign in · Apex Inventory";
+    document.title = "Sign in · Apex Software";
     if (!loading && session) navigate("/", { replace: true });
     (async () => {
       const { count } = await supabase.from("user_roles").select("id", { count: "exact", head: true });
@@ -73,8 +73,8 @@ export default function Auth() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <img src={apexLogo} alt="Apex Industrial Metrology LLP" className="h-20 w-20 mx-auto rounded-2xl object-cover bg-white shadow-elevated mb-4" />
-          <h1 className="text-3xl font-bold tracking-tight">Apex<span className="text-primary"> Inventory</span></h1>
-          <p className="text-muted-foreground text-sm mt-2">Industrial Metrology LLP — smart QR-based inventory</p>
+          <h1 className="text-3xl font-bold tracking-tight">Apex<span className="text-primary"> Software</span></h1>
+          <p className="text-muted-foreground text-sm mt-2">Industrial Metrology LLP — business management software</p>
         </div>
         <Card className="p-6 shadow-elevated">
           <Tabs value={tab} onValueChange={(v: any) => setTab(v)}>
@@ -118,7 +118,7 @@ export default function Auth() {
               </div>
               <Button className="w-full" disabled={busy} onClick={signUp}>
                 {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {firstUser ? "Create admin & sign in" : "Create account"}
+                {firstUser ? "Request access" : "Create account"}
               </Button>
             </TabsContent>
           </Tabs>

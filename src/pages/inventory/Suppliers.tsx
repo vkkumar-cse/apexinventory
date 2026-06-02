@@ -31,7 +31,7 @@ export default function Suppliers() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState(empty);
 
-  useEffect(() => { document.title = "Suppliers · Apex Inventory"; load(); }, []);
+  useEffect(() => { document.title = "Suppliers · Apex Software"; load(); }, []);
 
   async function load() {
     const { data } = await supabase.from("suppliers").select("*").order("name");

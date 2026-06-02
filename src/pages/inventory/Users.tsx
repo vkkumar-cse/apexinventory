@@ -18,7 +18,7 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"all" | Status>("pending");
 
-  useEffect(() => { document.title = "Users · Apex Inventory"; load(); }, []);
+  useEffect(() => { document.title = "Users · Apex Software"; load(); }, []);
 
   async function load() {
     setLoading(true);

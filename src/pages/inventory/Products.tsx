@@ -58,7 +58,7 @@ export default function Products() {
   const [form, setForm] = useState<typeof empty>(empty);
   const [supplierSearch, setSupplierSearch] = useState("");
 
-  useEffect(() => { document.title = "Products · Apex Inventory"; load(); }, []);
+  useEffect(() => { document.title = "Products · Apex Software"; load(); }, []);
 
   // Prefill from approved request
   useEffect(() => {
@@ -460,7 +460,7 @@ setRequestId(null);    setParams({});
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map(p => (
-          <Link key={p.id} to={`/product/${p.id}`}>
+          <Link key={p.id} to={`/inventory/product/${p.id}`}>
             <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">

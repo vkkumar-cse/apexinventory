@@ -11,7 +11,7 @@ export default function Categories() {
   const [counts, setCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    document.title = "Categories · Apex Inventory";
+    document.title = "Categories · Apex Software";
     (async () => {
       const { data } = await (supabase as any).from("categories").select("id,name").is("parent_id", null).order("name");
       setTops((data as Cat[]) ?? []);
@@ -31,7 +31,7 @@ export default function Categories() {
       </div>
       <div className="grid sm:grid-cols-2 gap-4">
         {tops.map(c => (
-          <Link key={c.id} to={`/categories/${c.id}`}>
+          <Link key={c.id} to={`/inventory/categories/${c.id}`}>
             <Card className="p-8 hover:border-primary/50 hover:shadow-glow transition group">
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 rounded-xl gradient-primary text-primary-foreground grid place-items-center shadow-glow">

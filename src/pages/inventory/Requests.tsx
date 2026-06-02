@@ -35,7 +35,7 @@ export default function Requests() {
   const empty = { name: "", part_no: "", type: "spare" as const, category_id: "", supplier_id: "", labels: [] as ("OPTO" | "NPD")[], specifications: "", description: "", stock: "0", reorder_level: "0", purchase_price: "0", selling_price: "0", location: "", note: "" };
   const [form, setForm] = useState<typeof empty>(empty);
 
-  useEffect(() => { document.title = "Requests · Apex Inventory"; load(); }, []);
+  useEffect(() => { document.title = "Requests · Apex Software"; load(); }, []);
 
   async function load() {
     const [{ data: r }, { data: p }, { data: c }, { data: s }] = await Promise.all([

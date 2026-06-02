@@ -66,7 +66,7 @@ export default function ProductDetail() {
   });
 
 const productIdentifier = product ? product.id : "";const productUrl = product ? `${window.location.origin}/product/${product.id}` : "";
-  useEffect(() => { if (routeParam) { document.title = "Product · Apex Inventory"; load(); } }, [routeParam]);
+  useEffect(() => { if (routeParam) { document.title = "Product · Apex Software"; load(); } }, [routeParam]);
 
   useEffect(() => {
     if (!productUrl) return;
@@ -120,7 +120,7 @@ setProductSuppliers(
     setProfiles(profMap);
     setRelated((r.data as any) ?? []);
     setAllProducts((all.data as any) ?? []);
-    document.title = `${(p as any).part_no ?? "#" + (p as any).code} ${(p as any).name} · Apex Inventory`;
+    document.title = `${(p as any).part_no ?? "#" + (p as any).code} ${(p as any).name} · Apex Software`;
     setLoading(false);
   }
 
@@ -174,7 +174,7 @@ setProductSuppliers(
     if (!product) return;
     const { error } = await supabase.from("products").delete().eq("id", product.id);
     if (error) { toast.error(error.message); return; }
-    toast.success(`Deleted ${product.name}`); navigate("/products");
+    toast.success(`Deleted ${product.name}`); navigate("/inventory/products");
   }
 
   async function openEdit() {
@@ -253,7 +253,7 @@ setProductSuppliers(
       </div>
       <h1 className="text-2xl font-bold">Product not found</h1>
       <p className="text-muted-foreground mt-2">No product with ID <span className="font-mono">{routeParam}</span> exists.</p>
-      <Button asChild className="mt-6"><Link to="/products">Back to products</Link></Button>
+      <Button asChild className="mt-6"><Link to="/inventory/products">Back to products</Link></Button>
     </div>
   );
 
@@ -267,8 +267,8 @@ setProductSuppliers(
     { label: "Specifications", value: product.specifications ?? "—" },
     { label: "Description", value: product.description ?? "—" },
     { label: "Type", value: <span className="uppercase">{product.type}</span> },
-    { label: "Category", value: parentCat ? <Link className="text-primary hover:underline" to={`/categories/${parentCat.id}`}>{parentCat.name}</Link> : "—" },
-    { label: "Sub-category", value: product.categories ? <Link className="text-primary hover:underline" to={`/categories/${product.categories.id}`}>{product.categories.name}</Link> : "—" },
+    { label: "Category", value: parentCat ? <Link className="text-primary hover:underline" to={`/inventory/categories/${parentCat.id}`}>{parentCat.name}</Link> : "—" },
+    { label: "Sub-category", value: product.categories ? <Link className="text-primary hover:underline" to={`/inventory/categories/${product.categories.id}`}>{product.categories.name}</Link> : "—" },
     { label: "Labels", value: <div className="flex gap-1">{(product.labels ?? []).map(l => <Badge key={l} variant="outline">{l}</Badge>)}{(product.labels ?? []).length === 0 && "—"}</div> },
 {
   label: "Suppliers",
@@ -284,7 +284,7 @@ setProductSuppliers(
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex items-start justify-between flex-wrap gap-4 no-print">
         <div>
-          <Link to="/products" className="text-xs text-muted-foreground hover:text-foreground">← All products</Link>
+          <Link to="/inventory/products" className="text-xs text-muted-foreground hover:text-foreground">← All products</Link>
           <div className="flex items-baseline gap-3 mt-1 flex-wrap">
             <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">
               {product.part_no ?? `#${product.code}`}
@@ -413,7 +413,7 @@ setProductSuppliers(
           <div className="space-y-2">
             {related.map(r => (
               <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40">
-<Link to={`/product/${r.products.id}`}>                  <p className="text-sm font-medium"><span className="font-mono text-primary">{r.products.part_no ?? "#" + r.products.code}</span> {r.products.name}</p>
+<Link to={`/inventory/product/${r.products.id}`}>                  <p className="text-sm font-medium"><span className="font-mono text-primary">{r.products.part_no ?? "#" + r.products.code}</span> {r.products.name}</p>
                   <p className="text-xs text-muted-foreground">Stock: {r.products.stock}</p>
                 </Link>
                 <div className="flex items-center gap-2">

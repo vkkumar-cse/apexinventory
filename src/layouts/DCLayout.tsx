@@ -1,38 +1,27 @@
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { ReactNode } from "react";
+import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Package, Truck, ScanLine, LogOut, FolderTree, ClipboardList, Users as UsersIcon, History } from "lucide-react";
+import { FileText, LogOut, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apexLogo from "@/assets/apex-logo.jpeg";
 
-export function AppShell() {
+export function DCLayout({ children }: { children: ReactNode }) {
   const { user, role, signOut, displayName, isAdmin } = useAuth();
-  const navigate = useNavigate();
 
   const nav = [
-    { to: "/inventory", label: "Dashboard", icon: LayoutDashboard, show: true },
-    { to: "/categories", label: "Categories", icon: FolderTree, show: true },
-    { to: "/products", label: "Products", icon: Package, show: true },
-    { to: "/suppliers", label: "Suppliers", icon: Truck, show: isAdmin },
-    {
-  to: "/transactions",
-  label: "Transactions",
-  icon: History,
-  show: true,
-},
-    { to: "/requests", label: "Requests", icon: ClipboardList, show: true },
-    { to: "/scan", label: "Scan", icon: ScanLine, show: true },
-    { to: "/users", label: "Users", icon: UsersIcon, show: isAdmin },
-  ].filter(n => n.show);
+    { to: "/dc", label: "DC Entry", icon: FileText, show: true },
+  ].filter((n) => n.show);
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border/60 backdrop-blur bg-background/80 sticky top-0 z-40">
         <div className="container flex h-16 items-center gap-4">
-          <Link to="/" className="flex items-center gap-2 font-bold">
+          <Link to="/" className="flex items-center gap-2 font-bold group">
             <img src={apexLogo} alt="Apex Industrial Metrology LLP" className="h-9 w-9 rounded-lg object-cover bg-white" />
-            <span className="text-lg tracking-tight">Apex<span className="text-primary"> Software</span></span>
+            <span className="text-lg tracking-tight">Apex<span className="text-primary"> DC Entry</span></span>
+            <ChevronLeft className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition ml-2 opacity-0 group-hover:opacity-100" />
           </Link>
           <nav className="hidden md:flex items-center gap-1 ml-6">
             {nav.map(({ to, label, icon: Icon }) => (
@@ -59,7 +48,7 @@ export function AppShell() {
                 {(role ?? 'worker')?.toUpperCase()}
               </Badge>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => signOut().then(() => navigate("/auth"))}>
+            <Button variant="ghost" size="icon" onClick={() => signOut().then(() => window.location.href = "/auth") }>
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -83,9 +72,8 @@ export function AppShell() {
           ))}
         </nav>
       </header>
-      <main className="flex-1 container py-6">
-        <Outlet />
-      </main>
+      <main className="flex-1 container py-6">{children}</main>
     </div>
   );
 }
+

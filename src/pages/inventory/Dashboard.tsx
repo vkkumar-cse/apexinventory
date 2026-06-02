@@ -21,7 +21,7 @@ export default function Dashboard() {
   const [myName, setMyName] = useState("");
 
   useEffect(() => {
-    document.title = "Dashboard · Apex Inventory";
+    document.title = "Dashboard · Apex Software";
     (async () => {
       const txQuery = isAdmin
         ? supabase.from("transactions").select("id,type,quantity,created_at,user_id, products(code,part_no,name)").order("created_at", { ascending: false }).limit(15)
@@ -62,17 +62,17 @@ export default function Dashboard() {
         </div>
 
         <div className="grid sm:grid-cols-3 gap-4">
-          <Link to="/scan"><Card className="p-6 hover:border-primary/50 transition cursor-pointer">
+          <Link to="/inventory/scan"><Card className="p-6 hover:border-primary/50 transition cursor-pointer">
             <ScanLine className="h-6 w-6 text-primary mb-2" />
             <p className="font-semibold">Scan QR</p>
             <p className="text-xs text-muted-foreground">Open the camera to scan a product.</p>
           </Card></Link>
-          <Link to="/products"><Card className="p-6 hover:border-primary/50 transition cursor-pointer">
+          <Link to="/inventory/products"><Card className="p-6 hover:border-primary/50 transition cursor-pointer">
             <Package className="h-6 w-6 text-primary mb-2" />
             <p className="font-semibold">Browse products</p>
             <p className="text-xs text-muted-foreground">Find an item to record usage.</p>
           </Card></Link>
-          <Link to="/requests"><Card className="p-6 hover:border-primary/50 transition cursor-pointer">
+          <Link to="/inventory/requests"><Card className="p-6 hover:border-primary/50 transition cursor-pointer">
             <ClipboardList className="h-6 w-6 text-primary mb-2" />
             <p className="font-semibold">Request a product</p>
             <p className="text-xs text-muted-foreground">Ask admin to add a new item.</p>
@@ -113,7 +113,7 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold tracking-tight">Operations Overview</h1>
           <p className="text-muted-foreground mt-1">Welcome back, {myName || "admin"}.</p>
         </div>
-        <Button asChild><Link to="/products"><Plus className="h-4 w-4 mr-2" />Add product</Link></Button>
+        <Button asChild><Link to="/inventory/products"><Plus className="h-4 w-4 mr-2" />Add product</Link></Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -145,7 +145,7 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground">Workers are waiting for your approval.</p>
             </div>
           </div>
-          <Button asChild size="sm"><Link to="/requests">Review <ArrowRight className="h-3 w-3 ml-1" /></Link></Button>
+          <Button asChild size="sm"><Link to="/inventory/requests">Review <ArrowRight className="h-3 w-3 ml-1" /></Link></Button>
         </Card>
       )}
 
@@ -153,11 +153,11 @@ export default function Dashboard() {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold">Stock alerts</h2>
-            <Button variant="ghost" size="sm" asChild><Link to="/products">All <ArrowRight className="h-3 w-3 ml-1" /></Link></Button>
+            <Button variant="ghost" size="sm" asChild><Link to="/inventory/products">All <ArrowRight className="h-3 w-3 ml-1" /></Link></Button>
           </div>
           <div className="space-y-2">
             {products.filter(p => p.stock <= p.reorder_level).slice(0, 6).map(p => (
-              <Link key={p.id} to={`/product/${p.id}`} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 hover:bg-secondary transition">
+              <Link key={p.id} to={`/inventory/product/${p.id}`} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40 hover:bg-secondary transition">
                 <div>
                   <p className="font-medium text-sm"><span className="font-mono text-primary">{p.part_no ?? "#" + p.code}</span> {p.name}</p>
                   <p className="text-xs text-muted-foreground">Stock: {p.stock} / Reorder at: {p.reorder_level}</p>

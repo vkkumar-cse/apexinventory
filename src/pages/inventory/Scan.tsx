@@ -14,7 +14,7 @@ export default function Scan() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    document.title = "Scan · Apex Inventory";
+    document.title = "Scan · Apex Software";
     supabase.from("products").select("id,code,part_no,name").order("updated_at", { ascending: false }).limit(8)
       .then(({ data }) => setRecent((data as any) ?? []));
   }, []);
@@ -23,8 +23,8 @@ export default function Scan() {
     const trimmed = raw.trim();
     if (!trimmed) return;
     const urlMatch = trimmed.match(/\/product\/([^/?#\s]+)/i);
-    if (urlMatch) { navigate(`/product/${urlMatch[1]}`); return; }
-    if (/^[A-Za-z0-9_-]+$/.test(trimmed)) { navigate(`/product/${trimmed}`); return; }
+    if (urlMatch) { navigate(`/inventory/product/${urlMatch[1]}`); return; }
+    if (/^[A-Za-z0-9_-]+$/.test(trimmed)) { navigate(`/inventory/product/${trimmed}`); return; }
     toast.error("Unrecognised QR. Enter a product ID, SKU, or paste a full URL.");
   }
 
@@ -70,7 +70,7 @@ export default function Scan() {
           {recent.map(p => (
             <button
               key={p.id}
-              onClick={() => navigate(`/product/${p.part_no ?? p.code}`)}
+              onClick={() => navigate(`/inventory/product/${p.part_no ?? p.code}`)}
               className="w-full flex items-center gap-3 p-3 rounded-lg bg-secondary/40 hover:bg-secondary text-left"
             >
               <Package className="h-4 w-4 text-primary" />

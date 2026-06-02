@@ -37,7 +37,7 @@ export default function CategoryDetail() {
     setLoading(true);
     const { data: c } = await (supabase as any).from("categories").select("id,name,parent_id").eq("id", id).maybeSingle();
     setCat(c as Cat);
-    document.title = c ? `${(c as any).name} · Apex Inventory` : "Category · Apex Inventory";
+    document.title = c ? `${(c as any).name} · Apex Software` : "Category · Apex Software";
 
     if (c && !(c as any).parent_id) {
       // Top-level: list sub-categories + products labelled with this name
@@ -76,7 +76,7 @@ export default function CategoryDetail() {
   if (!cat) return (
     <div className="text-center py-16">
       <h1 className="text-2xl font-bold">Category not found</h1>
-      <Button asChild className="mt-4"><Link to="/categories">Back</Link></Button>
+      <Button asChild className="mt-4"><Link to="/inventory/categories">Back</Link></Button>
     </div>
   );
 
@@ -86,7 +86,7 @@ export default function CategoryDetail() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/categories" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><ArrowLeft className="h-3 w-3" />All categories</Link>
+        <Link to="/inventory/categories" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><ArrowLeft className="h-3 w-3" />All categories</Link>
         <div className="flex items-center justify-between flex-wrap gap-3 mt-1">
           <h1 className="text-3xl font-bold tracking-tight">{cat.name}</h1>
           {isTop && isAdmin && (
@@ -110,7 +110,7 @@ export default function CategoryDetail() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {subs.map(s => (
               <Card key={s.id} className="p-4 hover:border-primary/50 transition relative group">
-                <Link to={`/categories/${s.id}`} className="flex items-center gap-2">
+                <Link to={`/inventory/categories/${s.id}`} className="flex items-center gap-2">
                   <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary grid place-items-center"><FolderTree className="h-4 w-4" /></div>
                   <div className="min-w-0">
                     <p className="font-medium truncate">{s.name}</p>
@@ -147,7 +147,7 @@ export default function CategoryDetail() {
         </h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {products.map(p => (
-            <Link key={p.id} to={`/product/${p.id}`}>
+            <Link key={p.id} to={`/inventory/product/${p.id}`}>
               <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
