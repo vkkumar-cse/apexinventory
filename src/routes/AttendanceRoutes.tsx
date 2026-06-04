@@ -13,11 +13,11 @@ export default function AttendanceRoutes() {
       
       {/* Placeholders for other routes */}
       <Route path="dashboard" element={<ProtectedRoute><AttendanceDashboard /></ProtectedRoute>} />
-      <Route path="checkin" element={<ProtectedRoute><CheckIn /></ProtectedRoute>} />
-      <Route path="history" element={<ProtectedRoute><div>History (Coming Soon)</div></ProtectedRoute>} />
+      <Route path="checkin" element={<ProtectedRoute requiredModule="attendance"><CheckIn /></ProtectedRoute>} />
+      <Route path="history" element={<ProtectedRoute requiredModule="attendance"><div>History (Coming Soon)</div></ProtectedRoute>} />
       <Route path="reports" element={<ProtectedRoute adminOnly><div>Reports (Coming Soon)</div></ProtectedRoute>} />
-      <Route path="leaves" element={<ProtectedRoute><div>Leaves (Coming Soon)</div></ProtectedRoute>} />
-      <Route path="holidays" element={<ProtectedRoute><div>Holidays (Coming Soon)</div></ProtectedRoute>} />
+      <Route path="leaves" element={<ProtectedRoute requiredModule="attendance"><div>Leaves (Coming Soon)</div></ProtectedRoute>} />
+      <Route path="holidays" element={<ProtectedRoute requiredModule="attendance"><div>Holidays (Coming Soon)</div></ProtectedRoute>} />
       
       <Route path="*" element={<NotFound />} />
     </Routes>

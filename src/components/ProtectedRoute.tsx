@@ -4,8 +4,16 @@ import { Loader2, Clock, ShieldAlert, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
-  const { session, loading, isAdmin, status, signOut } = useAuth();
+export function ProtectedRoute({ 
+  children, 
+  adminOnly = false,
+  requiredModule = null 
+}: { 
+  children: React.ReactNode; 
+  adminOnly?: boolean; 
+  requiredModule?: string | null;
+}) {
+  const { session, loading, isAdmin, status, signOut, role, moduleAccess, isActive } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -43,8 +51,31 @@ export function ProtectedRoute({ children, adminOnly = false }: { children: Reac
     );
   }
 
+  if (!isActive) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center space-y-4">
+          <div className="mx-auto h-14 w-14 rounded-2xl grid place-items-center bg-destructive/10 text-destructive">
+            <ShieldAlert className="h-7 w-7" />
+          </div>
+          <h1 className="text-2xl font-bold">Account disabled</h1>
+          <p className="text-muted-foreground text-sm">Your account has been disabled. Contact Administrator.</p>
+          <Button variant="outline" onClick={signOut}>
+            <LogOut className="h-4 w-4 mr-2" />Sign out
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace />;
   }
+
+  // If requiredModule is specified and the user is a worker, verify they have permission
+  if (requiredModule && role !== "admin" && !moduleAccess.includes(requiredModule)) {
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 }

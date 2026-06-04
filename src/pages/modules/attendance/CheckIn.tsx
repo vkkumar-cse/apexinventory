@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,11 +23,14 @@ import {
 } from "lucide-react";
 import Webcam from "react-webcam";
 
-type Employee = {
+type ProfileLite = {
   id: string;
-  employee_code: string;
-  full_name: string;
-  status: string;
+  employee_code: string | null;
+  full_name: string | null;
+  display_name: string | null;
+  email: string | null;
+  status: string | null;
+  is_active: boolean | null;
 };
 
 type AttendanceRecord = {
@@ -41,7 +45,6 @@ type AttendanceRecord = {
   status: string | null;
   latitude: number | null;
   longitude: number | null;
-  employees?: Employee;
 };
 
 const DEMO_MODE = true;
@@ -52,8 +55,9 @@ const OFFICE_LNG = 80.122378720956;
 const ALLOWED_RADIUS = 100; // in meters
 
 export default function CheckIn() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const { user, isAdmin, displayName } = useAuth();
+  const [profiles, setProfiles] = useState<ProfileLite[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -82,48 +86,43 @@ export default function CheckIn() {
     return `${year}-${month}-${day}`;
   };
 
-  const fetchEmployees = async () => {
+  const fetchProfiles = async () => {
     const { data, error } = await supabase
-      .from("employees" as any)
-      .select("*")
-      .eq("status", "active")
+      .from("profiles" as any)
+      .select("id, full_name, display_name, email, employee_code, status, is_active")
+      .eq("status", "approved")
+      .eq("is_active", true)
       .order("full_name", { ascending: true });
 
-    if (!error && data) setEmployees(data as any[]);
+    if (!error && data) setProfiles(data as ProfileLite[]);
   };
 
   const fetchTodayAttendance = async () => {
     const today = getTodayDateString();
     
-    // First try with join
     const { data, error } = await supabase
       .from("attendance" as any)
-      .select("*, employees(*)")
+      .select("*")
       .eq("attendance_date", today)
       .order("check_in", { ascending: false });
 
     if (!error && data) {
-      setTodayAttendance(data as any[]);
-    } else {
-      // Fallback if join fails due to unconfigured foreign keys
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from("attendance" as any)
-        .select("*")
-        .eq("attendance_date", today)
-        .order("check_in", { ascending: false });
-        
-      if (!fallbackError && fallbackData) {
-        setTodayAttendance(fallbackData as any[]);
-      } else if (fallbackError) {
-        console.error("Error fetching attendance:", fallbackError);
-      }
+      setTodayAttendance(data as AttendanceRecord[]);
+    } else if (error) {
+      console.error("Error fetching attendance:", error);
     }
   };
 
   useEffect(() => {
-    fetchEmployees();
+    fetchProfiles();
     fetchTodayAttendance();
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin && user?.id) {
+      setSelectedProfileId(user.id);
+    }
+  }, [isAdmin, user?.id]);
 
   // Haversine formula to calculate distance in meters
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -172,8 +171,8 @@ export default function CheckIn() {
   };
 
   const handleMarkAttendance = async () => {
-    if (!selectedEmployeeId) {
-      toast.error("Please select an employee");
+    if (!selectedProfileId) {
+      toast.error("No active profile selected");
       return;
     }
 
@@ -208,7 +207,7 @@ export default function CheckIn() {
       const { data, error: fetchError } = await supabase
         .from("attendance" as any)
         .select("*")
-        .eq("employee_id", selectedEmployeeId)
+        .eq("employee_id", selectedProfileId)
         .eq("attendance_date", today);
         
       if (fetchError) throw fetchError;
@@ -228,7 +227,7 @@ export default function CheckIn() {
         }
 
         const { error } = await supabase.from("attendance" as any).insert({
-          employee_id: selectedEmployeeId,
+          employee_id: selectedProfileId,
           attendance_date: today,
           check_in: nowISO,
           status: calculatedStatus,
@@ -323,8 +322,8 @@ export default function CheckIn() {
   };
 
   const uploadSelfieToStorage = async (): Promise<string | null> => {
-    if (!capturedSelfie || !selectedEmployeeId) {
-      toast.error("No selfie captured or employee selected");
+    if (!capturedSelfie || !selectedProfileId) {
+      toast.error("No selfie captured or profile selected");
       return null;
     }
 
@@ -337,7 +336,7 @@ export default function CheckIn() {
       // Create unique filename
       const now = new Date();
       const timestamp = now.getTime();
-      const fileName = `${selectedEmployeeId}-${selfieMode}-${timestamp}.jpg`;
+      const fileName = `${selectedProfileId}-${selfieMode}-${timestamp}.jpg`;
 
       // Upload to Supabase Storage
       const { data, error } = await supabase.storage
@@ -492,24 +491,32 @@ const formatISTTime = (time: string | null) => {
 
             <div className="space-y-5">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="employee" className="text-slate-300 font-medium text-sm">Select Employee</Label>
+                <Label htmlFor="profile" className="text-slate-300 font-medium text-sm">
+                  {isAdmin ? "Select Profile" : "Profile"}
+                </Label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                     <User className="w-4 h-4" />
                   </div>
-                  <select
-                    id="employee"
-                    className="flex h-12 w-full items-center justify-between rounded-xl border border-slate-700/80 bg-[#162A4E] pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer"
-                    value={selectedEmployeeId}
-                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                  >
-                    <option value="">-- Select Employee --</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.full_name} ({emp.employee_code})
-                      </option>
-                    ))}
-                  </select>
+                  {isAdmin ? (
+                    <select
+                      id="profile"
+                      className="flex h-12 w-full items-center justify-between rounded-xl border border-slate-700/80 bg-[#162A4E] pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer"
+                      value={selectedProfileId}
+                      onChange={(e) => setSelectedProfileId(e.target.value)}
+                    >
+                      <option value="">-- Select Profile --</option>
+                      {profiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.full_name || profile.display_name || profile.email || "Unnamed Profile"}{profile.employee_code ? ` (${profile.employee_code})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="flex h-12 w-full items-center rounded-xl border border-slate-700/80 bg-[#162A4E] pl-10 pr-3 py-2 text-sm text-white">
+                      {displayName || user?.email || "Your profile"}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -565,7 +572,7 @@ const formatISTTime = (time: string | null) => {
 
           <Button
             onClick={handleMarkAttendance}
-            disabled={isSubmitting || isLocating || !selectedEmployeeId}
+            disabled={isSubmitting || isLocating || !selectedProfileId}
             className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold h-12 rounded-xl mt-6 transition-all duration-300 shadow-md shadow-blue-500/10 flex items-center justify-center gap-2 border border-blue-500/20 active:scale-[0.98]"
           >
             {isLocating ? (
@@ -694,9 +701,9 @@ const formatISTTime = (time: string | null) => {
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {todayAttendance.map((record) => {
-                  const emp = employees.find(e => e.id === record.employee_id);
-                  const employeeName = record.employees?.full_name || emp?.full_name || "Unknown Employee";
-                  const employeeCode = record.employees?.employee_code || emp?.employee_code || "";
+                  const profile = profiles.find((item) => item.id === record.employee_id);
+                  const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Profile";
+                  const employeeCode = profile?.employee_code || "";
                   
                   return (
                     <tr key={record.id} className="hover:bg-[#13223D]/40 transition-all duration-150 group text-sm">

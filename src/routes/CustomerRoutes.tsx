@@ -6,7 +6,7 @@ import NotFound from "@/pages/NotFound";
 export default function CustomerRoutes() {
   return (
     <Routes>
-      <Route path="" element={<ProtectedRoute adminOnly><Customers /></ProtectedRoute>} />
+      <Route path="" element={<ProtectedRoute requiredModule="customers"><Customers /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

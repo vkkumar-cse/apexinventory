@@ -12,6 +12,7 @@ import { AttendanceLayout } from "@/layouts/AttendanceLayout";
 import { DCLayout } from "@/layouts/DCLayout";
 import DCRoutes from "@/routes/DCRoutes";
 import { CustomersLayout } from "@/layouts/CustomersLayout";
+import { CRMLayout } from "@/layouts/CRMLayout";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import Auth from "./pages/auth/Auth";
 import ChooseModule from "./pages/modules/ChooseModule";
@@ -19,6 +20,7 @@ import InventoryRoutes from "./routes/InventoryRoutes";
 import AttendanceRoutes from "./routes/AttendanceRoutes";
 import AdminRoutes from "./routes/AdminRoutes";
 import CustomerRoutes from "./routes/CustomerRoutes";
+import CRMRoutes from "./routes/CRMRoutes";
 import NotFound from "./pages/NotFound";
 import { Navigate } from "react-router-dom";
 
@@ -54,7 +56,7 @@ const App = () => (
             <Route
               path="/inventory/*"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredModule="inventory">
                   <InventoryLayout>
                     <InventoryRoutes />
                   </InventoryLayout>
@@ -66,7 +68,7 @@ const App = () => (
             <Route
               path="/attendance/*"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredModule="attendance">
                   <AttendanceLayout>
                     <AttendanceRoutes />
                   </AttendanceLayout>
@@ -78,10 +80,22 @@ const App = () => (
             <Route
               path="/customers/*"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredModule="customers">
                   <CustomersLayout>
                     <CustomerRoutes />
                   </CustomersLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* CRM Module Routes - With CRMLayout */}
+            <Route
+              path="/crm/*"
+              element={
+                <ProtectedRoute requiredModule="crm">
+                  <CRMLayout>
+                    <CRMRoutes />
+                  </CRMLayout>
                 </ProtectedRoute>
               }
             />
@@ -101,7 +115,7 @@ const App = () => (
             <Route
               path="/dc/*"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requiredModule="delivery_challan">
                   <DCLayout>
                     <DCRoutes />
                   </DCLayout>

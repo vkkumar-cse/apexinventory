@@ -17,15 +17,15 @@ import NotFound from "@/pages/NotFound";
 export default function InventoryRoutes() {
   return (
     <Routes>
-      <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      <Route path="products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
-      <Route path="product/:id" element={<ProtectedRoute><ProductDetail /></ProtectedRoute>} />
-      <Route path="categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
-      <Route path="categories/:id" element={<ProtectedRoute><CategoryDetail /></ProtectedRoute>} />
+      <Route path="dashboard" element={<ProtectedRoute requiredModule="inventory"><Dashboard /></ProtectedRoute>} />
+      <Route path="products" element={<ProtectedRoute requiredModule="inventory"><Products /></ProtectedRoute>} />
+      <Route path="product/:id" element={<ProtectedRoute requiredModule="inventory"><ProductDetail /></ProtectedRoute>} />
+      <Route path="categories" element={<ProtectedRoute requiredModule="inventory"><Categories /></ProtectedRoute>} />
+      <Route path="categories/:id" element={<ProtectedRoute requiredModule="inventory"><CategoryDetail /></ProtectedRoute>} />
       <Route path="suppliers" element={<ProtectedRoute adminOnly><Suppliers /></ProtectedRoute>} />
-      <Route path="scan" element={<ProtectedRoute><Scan /></ProtectedRoute>} />
-      <Route path="requests" element={<ProtectedRoute><Requests /></ProtectedRoute>} />
-      <Route path="transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+      <Route path="scan" element={<ProtectedRoute requiredModule="inventory"><Scan /></ProtectedRoute>} />
+      <Route path="requests" element={<ProtectedRoute requiredModule="inventory"><Requests /></ProtectedRoute>} />
+      <Route path="transactions" element={<ProtectedRoute requiredModule="inventory"><Transactions /></ProtectedRoute>} />
       <Route path="users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
 
       <Route path="*" element={<NotFound />} />
