@@ -1,17 +1,22 @@
 export const MODULES = [
-  { key: "inventory", label: "Inventory" },
-  { key: "attendance", label: "Attendance" },
-  { key: "customers", label: "Customers" },
-  { key: "crm", label: "CRM" },
-  { key: "delivery_challan", label: "DC Entry" },
-  { key: "user_management", label: "User Management" },
-  { key: "quotation", label: "Quotation" },
+  { key: "inventory", label: "Inventory", enabled: true },
+  { key: "attendance", label: "Attendance", enabled: false },
+  { key: "customers", label: "Customers", enabled: true },
+  { key: "crm", label: "CRM", enabled: false },
+  { key: "delivery_challan", label: "DC Entry", enabled: true },
+  { key: "user_management", label: "User Management", enabled: true },
+  { key: "quotation", label: "Quotation", enabled: false },
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number]["key"];
 
 export const MODULE_KEYS = MODULES.map((module) => module.key) as ModuleKey[];
 export const WORKER_MODULES = MODULES.filter((module) => module.key !== "user_management");
+export const ENABLED_MODULE_KEYS = MODULES.filter((module) => module.enabled).map((module) => module.key) as ModuleKey[];
+
+export function isModuleEnabled(key: string) {
+  return MODULES.some((module) => module.key === key && module.enabled);
+}
 
 export function normalizeModuleAccess(rawAccess: unknown): ModuleKey[] {
   let parsed = rawAccess;

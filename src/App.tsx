@@ -21,8 +21,10 @@ import AttendanceRoutes from "./routes/AttendanceRoutes";
 import AdminRoutes from "./routes/AdminRoutes";
 import CustomerRoutes from "./routes/CustomerRoutes";
 import CRMRoutes from "./routes/CRMRoutes";
+import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 import { Navigate } from "react-router-dom";
+import { isModuleEnabled } from "@/lib/modules";
 
 const queryClient = new QueryClient();
 
@@ -57,9 +59,15 @@ const App = () => (
               path="/inventory/*"
               element={
                 <ProtectedRoute requiredModule="inventory">
-                  <InventoryLayout>
-                    <InventoryRoutes />
-                  </InventoryLayout>
+                  {isModuleEnabled("inventory") ? (
+                    <InventoryLayout>
+                      <InventoryRoutes />
+                    </InventoryLayout>
+                  ) : (
+                    <MainLayout>
+                      <ComingSoon />
+                    </MainLayout>
+                  )}
                 </ProtectedRoute>
               }
             />
@@ -68,10 +76,16 @@ const App = () => (
             <Route
               path="/attendance/*"
               element={
-                <ProtectedRoute requiredModule="attendance">
-                  <AttendanceLayout>
-                    <AttendanceRoutes />
-                  </AttendanceLayout>
+                <ProtectedRoute requiredModule={isModuleEnabled("attendance") ? "attendance" : null}>
+                  {isModuleEnabled("attendance") ? (
+                    <AttendanceLayout>
+                      <AttendanceRoutes />
+                    </AttendanceLayout>
+                  ) : (
+                    <MainLayout>
+                      <ComingSoon />
+                    </MainLayout>
+                  )}
                 </ProtectedRoute>
               }
             />
@@ -81,9 +95,15 @@ const App = () => (
               path="/customers/*"
               element={
                 <ProtectedRoute requiredModule="customers">
-                  <CustomersLayout>
-                    <CustomerRoutes />
-                  </CustomersLayout>
+                  {isModuleEnabled("customers") ? (
+                    <CustomersLayout>
+                      <CustomerRoutes />
+                    </CustomersLayout>
+                  ) : (
+                    <MainLayout>
+                      <ComingSoon />
+                    </MainLayout>
+                  )}
                 </ProtectedRoute>
               }
             />
@@ -92,10 +112,16 @@ const App = () => (
             <Route
               path="/crm/*"
               element={
-                <ProtectedRoute requiredModule="crm">
-                  <CRMLayout>
-                    <CRMRoutes />
-                  </CRMLayout>
+                <ProtectedRoute requiredModule={isModuleEnabled("crm") ? "crm" : null}>
+                  {isModuleEnabled("crm") ? (
+                    <CRMLayout>
+                      <CRMRoutes />
+                    </CRMLayout>
+                  ) : (
+                    <MainLayout>
+                      <ComingSoon />
+                    </MainLayout>
+                  )}
                 </ProtectedRoute>
               }
             />
@@ -105,9 +131,15 @@ const App = () => (
               path="/admin/*"
               element={
                 <ProtectedRoute adminOnly>
-                  <AdminLayout>
-                    <AdminRoutes />
-                  </AdminLayout>
+                  {isModuleEnabled("user_management") ? (
+                    <AdminLayout>
+                      <AdminRoutes />
+                    </AdminLayout>
+                  ) : (
+                    <MainLayout>
+                      <ComingSoon />
+                    </MainLayout>
+                  )}
                 </ProtectedRoute>
               }
             />
@@ -116,9 +148,27 @@ const App = () => (
               path="/dc/*"
               element={
                 <ProtectedRoute requiredModule="delivery_challan">
-                  <DCLayout>
-                    <DCRoutes />
-                  </DCLayout>
+                  {isModuleEnabled("delivery_challan") ? (
+                    <DCLayout>
+                      <DCRoutes />
+                    </DCLayout>
+                  ) : (
+                    <MainLayout>
+                      <ComingSoon />
+                    </MainLayout>
+                  )}
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Unfinished/disabled module routes */}
+            <Route
+              path="/quotation/*"
+              element={
+                <ProtectedRoute requiredModule={isModuleEnabled("quotation") ? "quotation" : null}>
+                  <MainLayout>
+                    <ComingSoon />
+                  </MainLayout>
                 </ProtectedRoute>
               }
             />

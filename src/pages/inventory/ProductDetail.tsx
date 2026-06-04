@@ -51,6 +51,7 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [qrUrl, setQrUrl] = useState("");
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const qrPrintLabelRef = useRef<HTMLDivElement>(null);
 
   // Edit state
   const [editOpen, setEditOpen] = useState(false);
@@ -157,6 +158,17 @@ setProductSuppliers(
       a.href = c.toDataURL("image/png"); a.click();
     };
     img.src = qrUrl;
+  }
+
+  function printQR() {
+    if (!qrUrl || !product || !qrPrintLabelRef.current) {
+      toast.error("QR label is still loading");
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.print();
+    });
   }
 
   async function addRelated(rid: string) {
@@ -355,10 +367,19 @@ setProductSuppliers(
           <p className="text-[10px] text-muted-foreground font-mono break-all mt-1">{productUrl}</p>
           <div className="flex gap-2 mt-4 no-print">
             <Button variant="outline" size="sm" className="flex-1" onClick={downloadQR}><Download className="h-3 w-3 mr-1" />PNG</Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={() => window.print()}><Printer className="h-3 w-3 mr-1" />Print</Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={printQR}><Printer className="h-3 w-3 mr-1" />Print</Button>
           </div>
         </Card>
       </div>
+
+      {qrUrl && (
+        <div className="qr-print-label" ref={qrPrintLabelRef} aria-hidden="true">
+          <img src={qrUrl} alt="" />
+          <div className="qr-print-name">{product.name}</div>
+          <div className="qr-print-id">{productIdentifier}</div>
+          <div className="qr-print-type">{product.type}</div>
+        </div>
+      )}
 
       <Card className="p-6 no-print">
         <h2 className="font-semibold mb-1">Stock operations</h2>

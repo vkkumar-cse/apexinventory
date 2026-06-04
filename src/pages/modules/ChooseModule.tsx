@@ -4,14 +4,15 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Package, Clock, FileText, ArrowRight, ShieldCheck, Building, Handshake } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { MODULES, type ModuleKey, isModuleEnabled } from "@/lib/modules";
+import { toast } from "sonner";
 
 interface ModuleCard {
-  id: string;
+  id: ModuleKey;
   title: string;
   description: string;
   icon: React.ReactNode;
   path: string;
-  status: "available" | "coming-soon";
 }
 
 // All 6 main modules
@@ -22,7 +23,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Manage products, stock levels, and track inventory using QR codes.",
     icon: <Package className="h-8 w-8" />,
     path: "/inventory/dashboard",
-    status: "available",
   },
   {
     id: "attendance",
@@ -30,7 +30,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Track employee attendance and manage work hours.",
     icon: <Clock className="h-8 w-8" />,
     path: "/attendance/dashboard",
-    status: "available",
   },
   {
     id: "customers",
@@ -38,7 +37,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Manage customer records and account profiles.",
     icon: <Building className="h-8 w-8" />,
     path: "/customers",
-    status: "available",
   },
   {
     id: "crm",
@@ -46,7 +44,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Track enquiries, leads, and sales pipeline activity.",
     icon: <Handshake className="h-8 w-8" />,
     path: "/crm",
-    status: "available",
   },
   {
     id: "delivery_challan",
@@ -54,7 +51,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Create and manage Delivery Challans.",
     icon: <FileText className="h-8 w-8" />,
     path: "/dc",
-    status: "available",
   },
   {
     id: "user_management",
@@ -62,7 +58,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Manage users, approvals, and roles.",
     icon: <ShieldCheck className="h-8 w-8" />,
     path: "/admin/users",
-    status: "available",
   },
   {
     id: "quotation",
@@ -70,7 +65,6 @@ const ALL_MODULES: ModuleCard[] = [
     description: "Create and manage quotations for customers.",
     icon: <FileText className="h-8 w-8" />,
     path: "/quotation",
-    status: "coming-soon",
   },
 ];
 
@@ -87,8 +81,19 @@ export default function ChooseModule() {
     if (isAdmin) return true;
     // user_management is admin-only (never shown to workers even if somehow granted)
     if (m.id === "user_management") return false;
+    if (!MODULES.some((module) => module.key === m.id)) return false;
+    if (!isModuleEnabled(m.id)) return true;
     return moduleAccess.includes(m.id);
   });
+
+  function openModule(module: ModuleCard) {
+    if (!isModuleEnabled(module.id)) {
+      toast.info("This module is coming soon");
+      return;
+    }
+
+    navigate(module.path);
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
@@ -110,17 +115,17 @@ export default function ChooseModule() {
               <Card
                 key={module.id}
                 className={`p-6 flex flex-col gap-4 transition-all ${
-                  module.status === "available"
+                  isModuleEnabled(module.id)
                     ? "hover:border-primary/50 hover:shadow-glow cursor-pointer group"
                     : "opacity-60 cursor-not-allowed"
                 }`}
-                onClick={() => module.status === "available" && navigate(module.path)}
+                onClick={() => openModule(module)}
               >
                 <div className="flex items-start justify-between">
                   <div className="h-12 w-12 rounded-lg gradient-primary text-primary-foreground grid place-items-center shadow-sm">
                     {module.icon}
                   </div>
-                  {module.status === "coming-soon" && <Badge variant="secondary">Coming Soon</Badge>}
+                  {!isModuleEnabled(module.id) && <Badge variant="secondary">Coming Soon</Badge>}
                 </div>
 
                 <div className="flex-1">
@@ -128,7 +133,7 @@ export default function ChooseModule() {
                   <p className="text-sm text-muted-foreground">{module.description}</p>
                 </div>
 
-                {module.status === "available" && (
+                {isModuleEnabled(module.id) && (
                   <div className="flex items-center gap-2 text-primary group-hover:translate-x-1 transition-transform">
                     <span className="text-sm font-medium">Open</span>
                     <ArrowRight className="h-4 w-4" />
