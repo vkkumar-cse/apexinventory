@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
@@ -19,8 +19,12 @@ import {
   User as UserSoloIcon,
   CheckSquare,
   Square,
+  Camera,
+  X,
 } from "lucide-react";
 import { WORKER_MODULES, normalizeModuleAccess } from "@/lib/modules";
+import Webcam from "react-webcam";
+import { getFaceDescriptorFromVideo } from "@/lib/faceRecognition";
 
 type ProfileStatus = "pending" | "approved" | "rejected";
 type ProfileRole = "admin" | "worker";
@@ -39,6 +43,7 @@ type EmployeeProfile = {
   module_access: string[];
   is_active: boolean;
   created_at: string | null;
+  face_registered_at: string | null;
 };
 
 type ProfileForm = {
@@ -67,6 +72,14 @@ const emptyForm: ProfileForm = {
   is_active: true,
 };
 
+const REGISTRATION_STEPS = [
+  { label: "Straight Face", instruction: "Look directly into the camera." },
+  { label: "Slight Left", instruction: "Turn your head slightly to the left." },
+  { label: "Slight Right", instruction: "Turn your head slightly to the right." },
+  { label: "Slight Up", instruction: "Tilt your head slightly upwards." },
+  { label: "Slight Down", instruction: "Tilt your head slightly downwards." },
+];
+
 export default function EmployeeManagement() {
   const { user: me } = useAuth();
   const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
@@ -74,6 +87,12 @@ export default function EmployeeManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileForm>(emptyForm);
+  const webcamRef = useRef<Webcam>(null);
+  const [showFaceRegistration, setShowFaceRegistration] = useState(false);
+  const [isRegisteringFace, setIsRegisteringFace] = useState(false);
+  const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
+  const [registrationStep, setRegistrationStep] = useState<number>(0);
+  const [capturedDescriptors, setCapturedDescriptors] = useState<number[][]>([]);
 
   const fetchProfiles = async () => {
     setLoading(true);
@@ -85,7 +104,22 @@ export default function EmployeeManagement() {
 
       if (error) throw error;
 
-      setProfiles((data ?? []).map((profile: any) => ({
+      const profilesRaw = data ?? [];
+      const profileIds = profilesRaw.map((profile: any) => profile.id);
+      const { data: faceProfiles, error: faceError } = profileIds.length > 0
+        ? await (supabase as any)
+          .from("employee_face_profiles")
+          .select("profile_id, registered_at")
+          .in("profile_id", profileIds)
+        : { data: [], error: null };
+
+      if (faceError) throw faceError;
+
+      const registeredAtByProfile = new Map(
+        ((faceProfiles ?? []) as any[]).map((faceProfile) => [faceProfile.profile_id, faceProfile.registered_at ?? null])
+      );
+
+      setProfiles(profilesRaw.map((profile: any) => ({
         id: profile.id,
         email: profile.email ?? null,
         display_name: profile.display_name ?? null,
@@ -99,6 +133,7 @@ export default function EmployeeManagement() {
         module_access: normalizeModuleAccess(profile.module_access),
         is_active: profile.is_active ?? true,
         created_at: profile.created_at ?? null,
+        face_registered_at: registeredAtByProfile.get(profile.id) ?? null,
       })));
     } catch (err: any) {
       toast.error(`Error loading profiles: ${err.message}`);
@@ -220,6 +255,91 @@ export default function EmployeeManagement() {
     } catch (err: any) {
       toast.error(`Operation failed: ${err.message}`);
     }
+  };
+
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
+
+  const openFaceRegistration = () => {
+    if (!selectedProfileId) {
+      toast.error("Select a profile to register face");
+      return;
+    }
+
+    setCameraPermissionError(null);
+    setRegistrationStep(0);
+    setCapturedDescriptors([]);
+    setShowFaceRegistration(true);
+  };
+
+  const captureFaceSample = async () => {
+    const video = webcamRef.current?.video;
+    if (!selectedProfileId || !video) {
+      toast.error("Camera is not ready");
+      return;
+    }
+
+    setIsRegisteringFace(true);
+    try {
+      const descriptor = await getFaceDescriptorFromVideo(video);
+      const newDescriptors = [...capturedDescriptors, descriptor];
+      setCapturedDescriptors(newDescriptors);
+      
+      if (registrationStep < 4) {
+        setRegistrationStep(registrationStep + 1);
+        toast.success(`Captured ${REGISTRATION_STEPS[registrationStep].label}! Proceed to next pose.`);
+      } else {
+        setRegistrationStep(5);
+        toast.success("All 5 poses captured successfully! Click 'Save Face Profile' below to finish.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Face capture failed. Please ensure your face is fully visible and try again.");
+    } finally {
+      setIsRegisteringFace(false);
+    }
+  };
+
+  const registerFaceDescriptor = async () => {
+    if (!selectedProfileId || capturedDescriptors.length < 5) {
+      toast.error("Please capture all 5 face samples first.");
+      return;
+    }
+
+    setIsRegisteringFace(true);
+    try {
+      const averageDescriptor = new Array(128).fill(0);
+      for (let i = 0; i < 128; i++) {
+        let sum = 0;
+        for (let j = 0; j < 5; j++) {
+          sum += capturedDescriptors[j][i];
+        }
+        averageDescriptor[i] = sum / 5;
+      }
+
+      const { error } = await (supabase as any)
+        .from("employee_face_profiles")
+        .upsert({
+          profile_id: selectedProfileId,
+          face_descriptor: averageDescriptor,
+          face_image_path: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "profile_id" });
+
+      if (error) throw error;
+
+      toast.success("Face profile registered with 5-pose averaging!");
+      setShowFaceRegistration(false);
+      await fetchProfiles();
+    } catch (err: any) {
+      toast.error(err.message || "Face registration failed");
+    } finally {
+      setIsRegisteringFace(false);
+    }
+  };
+
+  const resetFaceCapture = () => {
+    setRegistrationStep(0);
+    setCapturedDescriptors([]);
+    toast.success("Registration reset. Please capture your straight face again.");
   };
 
   const formatDate = (dateString: string | null) => {
@@ -400,6 +520,36 @@ export default function EmployeeManagement() {
                 </div>
               )}
 
+              <div className="border border-slate-800 rounded-xl p-4 bg-slate-950/40 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label className="text-slate-300 text-sm font-medium">Face Registration</Label>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {selectedProfile?.face_registered_at
+                        ? `Registered ${formatDate(selectedProfile.face_registered_at)}`
+                        : "No face profile registered"}
+                    </p>
+                  </div>
+                  <Badge className={`text-[10px] font-bold ${
+                    selectedProfile?.face_registered_at
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                  }`}>
+                    {selectedProfile?.face_registered_at ? "FACE READY" : "MISSING"}
+                  </Badge>
+                </div>
+                <Button
+                  type="button"
+                  onClick={openFaceRegistration}
+                  disabled={!selectedProfileId}
+                  variant="outline"
+                  className="w-full border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800"
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  Register / Update Face
+                </Button>
+              </div>
+
               <div className="pt-4 flex gap-3">
                 <Button
                   onClick={updateProfile}
@@ -446,6 +596,7 @@ export default function EmployeeManagement() {
                         <th className="py-3 px-3">Contact</th>
                         <th className="py-3 px-3">Role / Dept</th>
                         <th className="py-3 px-3 text-center">Status</th>
+                        <th className="py-3 px-3 text-center">Face</th>
                         <th className="py-3 px-3">Created</th>
                         <th className="py-3 px-3 text-right">Actions</th>
                       </tr>
@@ -498,6 +649,15 @@ export default function EmployeeManagement() {
                               </Badge>
                             </div>
                           </td>
+                          <td className="py-4 px-3 text-center">
+                            <Badge className={`text-[10px] font-bold ${
+                              profile.face_registered_at
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                : "bg-slate-800 text-slate-400 border border-slate-700"
+                            }`}>
+                              {profile.face_registered_at ? "VERIFIED READY" : "NOT SET"}
+                            </Badge>
+                          </td>
                           <td className="py-4 px-3 text-xs text-slate-400 font-mono">
                             {formatDate(profile.created_at)}
                           </td>
@@ -533,6 +693,120 @@ export default function EmployeeManagement() {
           </Card>
         </div>
       </div>
+
+      {showFaceRegistration && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0B1528] border border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Camera className="w-5 h-5 text-blue-400" />
+                Register Face
+              </h3>
+              <button onClick={() => setShowFaceRegistration(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {cameraPermissionError ? (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 mb-4">
+                <p className="font-semibold mb-2">Camera permission denied</p>
+                <p className="text-sm">{cameraPermissionError}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-5 gap-2 pb-2">
+                  {REGISTRATION_STEPS.map((step, idx) => {
+                    const isCaptured = idx < capturedDescriptors.length;
+                    const isCurrent = idx === registrationStep;
+                    return (
+                      <div
+                        key={step.label}
+                        className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all ${
+                          isCaptured
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : isCurrent
+                              ? "bg-blue-500/10 border-blue-500/30 text-blue-400 animate-pulse"
+                              : "bg-slate-950/40 border-slate-800 text-slate-500"
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{idx + 1}</span>
+                        <span className="text-[9px] mt-0.5 leading-tight font-medium">{step.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {registrationStep < 5 ? (
+                  <div className="bg-[#162A4E] border border-blue-500/20 rounded-xl p-3.5 text-center text-sm shadow-md animate-fade-in">
+                    <span className="text-xs uppercase tracking-wider font-extrabold text-blue-400">Current Pose Instruction</span>
+                    <p className="mt-1 text-slate-200 font-semibold">{REGISTRATION_STEPS[registrationStep].instruction}</p>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center text-sm shadow-md animate-fade-in">
+                    <span className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">All Poses Captured</span>
+                    <p className="mt-1 text-slate-200 font-semibold">Ready to compile and save your face profile.</p>
+                  </div>
+                )}
+
+                <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
+                  <Webcam
+                    ref={webcamRef}
+                    audio={false}
+                    mirrored
+                    screenshotFormat="image/jpeg"
+                    className="w-full"
+                    onUserMediaError={() => {
+                      setCameraPermissionError("Camera permission denied");
+                    }}
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 text-center">
+                  Only the numeric mathematical facial features are compiled. Face images are not stored.
+                </p>
+                <div className="flex gap-3">
+                  {registrationStep < 5 ? (
+                    <Button
+                      onClick={captureFaceSample}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                      disabled={isRegisteringFace}
+                    >
+                      {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
+                      Capture {REGISTRATION_STEPS[registrationStep].label}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={registerFaceDescriptor}
+                      className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold animate-pulse"
+                      disabled={isRegisteringFace}
+                    >
+                      {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
+                      Save Face Profile
+                    </Button>
+                  )}
+                  {capturedDescriptors.length > 0 && (
+                    <Button
+                      onClick={resetFaceCapture}
+                      variant="outline"
+                      className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                      disabled={isRegisteringFace}
+                    >
+                      Reset
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => setShowFaceRegistration(false)}
+                    variant="outline"
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                    disabled={isRegisteringFace}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -19,9 +19,9 @@ import {
   Hourglass,
   Camera,
   X,
-  Image
 } from "lucide-react";
 import Webcam from "react-webcam";
+import { compareFaceDescriptors, getFaceDescriptorFromVideo, isValidFaceDescriptor, type FaceDescriptor } from "@/lib/faceRecognition";
 
 type ProfileLite = {
   id: string;
@@ -31,6 +31,15 @@ type ProfileLite = {
   email: string | null;
   status: string | null;
   is_active: boolean | null;
+};
+
+type EmployeeFaceProfile = {
+  id: string;
+  profile_id: string;
+  face_descriptor: FaceDescriptor;
+  face_image_path: string | null;
+  registered_at: string | null;
+  updated_at: string | null;
 };
 
 type AttendanceRecord = {
@@ -45,38 +54,50 @@ type AttendanceRecord = {
   status: string | null;
   latitude: number | null;
   longitude: number | null;
+  face_verified: boolean | null;
+  face_match_score: number | null;
+  gps_verified: boolean | null;
+  distance_meters: number | null;
 };
 
-const DEMO_MODE = true;
+const DEMO_MODE = false;
 
 // Office Location Constants
-const OFFICE_LAT = 13.185070036510725;
-const OFFICE_LNG = 80.122378720956;
+const OFFICE_LAT = 13.138576;
+const OFFICE_LNG = 80.173716;
 const ALLOWED_RADIUS = 100; // in meters
 
 export default function CheckIn() {
-  const { user, isAdmin, displayName } = useAuth();
+  const { user, displayName } = useAuth();
   const [profiles, setProfiles] = useState<ProfileLite[]>([]);
-  const [selectedProfileId, setSelectedProfileId] = useState("");
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [faceProfile, setFaceProfile] = useState<EmployeeFaceProfile | null>(null);
   
-  // Geolocation & Dev Mocking State
-  const [simulateLocation, setSimulateLocation] = useState(true); // Default to true for ease of verification
+  // Geolocation State
   const [currentCoords, setCurrentCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "fetching" | "success" | "error">("idle");
   const [distanceFromOffice, setDistanceFromOffice] = useState<number | null>(null);
 
-  // Webcam & Selfie State
+  // Webcam & Face Verification State
   const webcamRef = useRef<Webcam>(null);
-  const [showWebcam, setShowWebcam] = useState(false);
-  const [capturedSelfie, setCapturedSelfie] = useState<string | null>(null);
-  const [isUploadingSelfie, setIsUploadingSelfie] = useState(false);
-  const [selfieMode, setSelfieMode] = useState<"check-in" | "check-out" | null>(null);
+  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [isVerifyingFace, setIsVerifyingFace] = useState(false);
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
-  const [showImageModal, setShowImageModal] = useState(false);
+  const [pendingCoords, setPendingCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pendingDistanceMeters, setPendingDistanceMeters] = useState<number | null>(null);
+  const currentProfileId = user?.id ?? "";
+  const currentProfile = profiles.find((profile) => profile.id === currentProfileId);
+  const currentProfileName =
+    currentProfile?.full_name ||
+    currentProfile?.display_name ||
+    displayName ||
+    currentProfile?.email ||
+    user?.email ||
+    "Your profile";
+  const hasValidFaceProfile = isValidFaceDescriptor(faceProfile?.face_descriptor);
+  const hasValidGps = locationStatus === "success" && distanceFromOffice !== null && distanceFromOffice <= ALLOWED_RADIUS;
 
   const getTodayDateString = () => {
     const now = new Date();
@@ -94,7 +115,48 @@ export default function CheckIn() {
       .eq("is_active", true)
       .order("full_name", { ascending: true });
 
-    if (!error && data) setProfiles(data as ProfileLite[]);
+    if (!error && data) setProfiles(data as unknown as ProfileLite[]);
+  };
+
+  const fetchFaceProfile = async () => {
+    if (!currentProfileId) {
+      setFaceProfile(null);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("employee_face_profiles" as any)
+      .select("id, profile_id, face_descriptor, face_image_path, registered_at, updated_at")
+      .eq("profile_id", currentProfileId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching face profile:", error);
+      setFaceProfile(null);
+      return;
+    }
+
+    setFaceProfile(data as unknown as EmployeeFaceProfile | null);
+  };
+
+  const fetchLatestFaceProfile = async (): Promise<EmployeeFaceProfile | null> => {
+    if (!currentProfileId) return null;
+
+    const { data, error } = await supabase
+      .from("employee_face_profiles" as any)
+      .select("id, profile_id, face_descriptor, face_image_path, registered_at, updated_at")
+      .eq("profile_id", currentProfileId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching face profile:", error);
+      setFaceProfile(null);
+      return null;
+    }
+
+    const nextFaceProfile = data as unknown as EmployeeFaceProfile | null;
+    setFaceProfile(nextFaceProfile);
+    return nextFaceProfile;
   };
 
   const fetchTodayAttendance = async () => {
@@ -107,7 +169,7 @@ export default function CheckIn() {
       .order("check_in", { ascending: false });
 
     if (!error && data) {
-      setTodayAttendance(data as AttendanceRecord[]);
+      setTodayAttendance(data as unknown as AttendanceRecord[]);
     } else if (error) {
       console.error("Error fetching attendance:", error);
     }
@@ -119,10 +181,8 @@ export default function CheckIn() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin && user?.id) {
-      setSelectedProfileId(user.id);
-    }
-  }, [isAdmin, user?.id]);
+    fetchFaceProfile();
+  }, [currentProfileId]);
 
   // Haversine formula to calculate distance in meters
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -141,15 +201,9 @@ export default function CheckIn() {
     return R * c; // distance in meters
   };
 
-  // Get current position (real or simulated)
+  // Get current real browser position.
   const getCoordinates = (): Promise<{ latitude: number; longitude: number }> => {
     return new Promise((resolve, reject) => {
-      if (simulateLocation) {
-        // Return simulated office coordinates
-        resolve({ latitude: OFFICE_LAT, longitude: OFFICE_LNG });
-        return;
-      }
-
       if (!navigator.geolocation) {
         reject(new Error("Geolocation is not supported by your browser"));
         return;
@@ -170,114 +224,156 @@ export default function CheckIn() {
     });
   };
 
+  const verifyGpsLocation = async () => {
+    setIsLocating(true);
+    setLocationStatus("fetching");
+    try {
+      const coords = await getCoordinates();
+      const distance = calculateDistance(coords.latitude, coords.longitude, OFFICE_LAT, OFFICE_LNG);
+      setCurrentCoords(coords);
+      setDistanceFromOffice(distance);
+
+      if (distance > ALLOWED_RADIUS) {
+        setLocationStatus("error");
+        toast.error(`Outside office radius (Distance: ${Math.round(distance)}m)`);
+        return null;
+      }
+
+      setLocationStatus("success");
+      return { coords, distance };
+    } catch (error: any) {
+      let errMsg = "GPS verification failed";
+      if (error?.message) errMsg = error.message;
+      if (error?.code === 1) errMsg = "GPS permission denied. Please grant location access.";
+      else if (error?.code === 2) errMsg = "Location unavailable. Please make sure GPS is enabled.";
+      else if (error?.code === 3) errMsg = "Location request timed out. Please try again.";
+      toast.error(errMsg);
+      setLocationStatus("error");
+      return null;
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const saveAttendance = async (
+    coords: { latitude: number; longitude: number },
+    distanceMeters: number,
+    faceMatchScore: number
+  ) => {
+    const today = getTodayDateString();
+    const now = new Date();
+    const nowISO = now.toISOString();
+
+    // Check existing record for current profile today
+    const { data, error: fetchError } = await supabase
+      .from("attendance" as any)
+      .select("*")
+      .eq("employee_id", currentProfileId)
+      .eq("attendance_date", today);
+
+    if (fetchError) throw fetchError;
+
+    const existingRecords = data as any[] | null;
+    const existingRecord = existingRecords && existingRecords.length > 0 ? existingRecords[0] : null;
+
+    // CASE 1: No attendance record exists today -> Create check-in record
+    if (!existingRecord) {
+      // Late Mark Rule: Office start time = 9:00 AM, Grace period = 15 mins (limit is 9:15 AM)
+      const limitTime = new Date();
+      limitTime.setHours(9, 15, 0, 0);
+
+      let calculatedStatus = "present";
+      if (now.getTime() > limitTime.getTime()) {
+        calculatedStatus = "late";
+      }
+
+      const { error } = await supabase.from("attendance" as any).insert({
+        employee_id: currentProfileId,
+        attendance_date: today,
+        check_in: nowISO,
+        status: calculatedStatus,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        gps_verified: true,
+        face_verified: true,
+        face_match_score: faceMatchScore,
+        distance_meters: distanceMeters,
+      } as any);
+
+      if (error) throw error;
+      toast.success(`Check-in successful! Marked as ${calculatedStatus}`);
+    }
+    // CASE 2: Attendance record exists today, check_out is null -> Verify GPS again -> Update check_out
+    else if (!existingRecord.check_out) {
+      const checkOutTimestamp = nowISO;
+      const checkInTime = new Date(existingRecord.check_in).getTime();
+      const checkOutTime = new Date(checkOutTimestamp).getTime();
+      const diffMs = checkOutTime - checkInTime;
+      const workingHours = Number(((diffMs / (1000 * 60 * 60)).toFixed(2)));
+
+      // Debug logs
+      console.log("RAW CHECK IN:", existingRecord.check_in);
+      console.log("RAW CHECK OUT:", checkOutTimestamp);
+      console.log("CHECK IN MS:", checkInTime);
+      console.log("CHECK OUT MS:", checkOutTime);
+      console.log("WORKING HOURS:", workingHours);
+
+      // Half Day Rule: If total working hours < 4: status = "half-day"
+      // Otherwise, keep the original status (present or late)
+      let calculatedStatus = existingRecord.status || "present";
+      if (workingHours < 4) {
+        calculatedStatus = "half-day";
+      }
+
+      const { error } = await supabase
+        .from("attendance" as any)
+        .update({
+          check_out: nowISO,
+          working_hours: workingHours,
+          status: calculatedStatus,
+          latitude: coords.latitude, // Store/update GPS of check-out
+          longitude: coords.longitude,
+          gps_verified: true,
+          face_verified: true,
+          face_match_score: faceMatchScore,
+          distance_meters: distanceMeters,
+        } as any)
+        .eq("id", existingRecord.id);
+
+      if (error) throw error;
+      toast.success(`Check-out successful! Calculated working hours: ${workingHours} hrs (${calculatedStatus})`);
+    }
+    // CASE 3: Attendance record already has check_out -> Block and warn
+    else {
+      toast.error("Attendance already completed for today");
+    }
+  };
+
   const handleMarkAttendance = async () => {
-    if (!selectedProfileId) {
-      toast.error("No active profile selected");
+    if (!currentProfileId) {
+      toast.error("No active profile found");
+      return;
+    }
+
+    const latestFaceProfile = await fetchLatestFaceProfile();
+    if (!isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+      toast.error("Please register face before attendance");
       return;
     }
 
     setIsSubmitting(true);
-    setIsLocating(true);
-    setLocationStatus("fetching");
 
     try {
-      const today = getTodayDateString();
-      const now = new Date();
-      const nowISO = now.toISOString();
-
-      // 1. Fetch Geolocation
-      const coords = await getCoordinates();
-      setCurrentCoords(coords);
-      setLocationStatus("success");
-      
-      // Calculate distance
-      const distance = calculateDistance(coords.latitude, coords.longitude, OFFICE_LAT, OFFICE_LNG);
-      setDistanceFromOffice(distance);
-
-      // 2. GPS Verification: Check if within range
-      if (distance > ALLOWED_RADIUS) {
-        toast.error(`You are outside office premises (Distance: ${Math.round(distance)}m)`);
-        setLocationStatus("error");
+      const gpsResult = await verifyGpsLocation();
+      if (!gpsResult) {
         setIsSubmitting(false);
-        setIsLocating(false);
         return;
       }
 
-      // Check existing record for selected employee today
-      const { data, error: fetchError } = await supabase
-        .from("attendance" as any)
-        .select("*")
-        .eq("employee_id", selectedProfileId)
-        .eq("attendance_date", today);
-        
-      if (fetchError) throw fetchError;
-      
-      const existingRecords = data as any[] | null;
-      const existingRecord = existingRecords && existingRecords.length > 0 ? existingRecords[0] : null;
-
-      // CASE 1: No attendance record exists today -> Create check-in record
-      if (!existingRecord) {
-        // Late Mark Rule: Office start time = 9:00 AM, Grace period = 15 mins (limit is 9:15 AM)
-        const limitTime = new Date();
-        limitTime.setHours(9, 15, 0, 0);
-
-        let calculatedStatus = "present";
-        if (now.getTime() > limitTime.getTime()) {
-          calculatedStatus = "late";
-        }
-
-        const { error } = await supabase.from("attendance" as any).insert({
-          employee_id: selectedProfileId,
-          attendance_date: today,
-          check_in: nowISO,
-          status: calculatedStatus,
-          latitude: coords.latitude,
-          longitude: coords.longitude
-        } as any);
-
-        if (error) throw error;
-        toast.success(`Check-in successful! Marked as ${calculatedStatus}`);
-      } 
-      // CASE 2: Attendance record exists today, check_out is null -> Verify GPS again -> Update check_out
-      else if (!existingRecord.check_out) {
-        const checkOutTimestamp = nowISO;
-        const checkInTime = new Date(existingRecord.check_in).getTime();
-        const checkOutTime = new Date(checkOutTimestamp).getTime();
-        const diffMs = checkOutTime - checkInTime;
-        const workingHours = Number(((diffMs / (1000 * 60 * 60)).toFixed(2)));
-
-        // Debug logs
-        console.log("RAW CHECK IN:", existingRecord.check_in);
-        console.log("RAW CHECK OUT:", checkOutTimestamp);
-        console.log("CHECK IN MS:", checkInTime);
-        console.log("CHECK OUT MS:", checkOutTime);
-        console.log("WORKING HOURS:", workingHours);
-
-        // Half Day Rule: If total working hours < 4: status = "half-day"
-        // Otherwise, keep the original status (present or late)
-        let calculatedStatus = existingRecord.status || "present";
-        if (workingHours < 4) {
-          calculatedStatus = "half-day";
-        }
-
-        const { error } = await supabase
-          .from("attendance" as any)
-          .update({
-            check_out: nowISO,
-            working_hours: workingHours,
-            status: calculatedStatus,
-            latitude: coords.latitude, // Store/update GPS of check-out
-            longitude: coords.longitude
-          } as any)
-          .eq("id", existingRecord.id);
-
-        if (error) throw error;
-        toast.success(`Check-out successful! Calculated working hours: ${workingHours} hrs (${calculatedStatus})`);
-      } 
-      // CASE 3: Attendance record already has check_out -> Block and warn
-      else {
-        toast.error("Attendance already completed for today");
-      }
+      setPendingCoords(gpsResult.coords);
+      setPendingDistanceMeters(gpsResult.distance);
+      setCameraPermissionError(null);
+      setShowFaceCamera(true);
     } catch (error: any) {
       let errMsg = "An error occurred";
       if (error && error.message) {
@@ -292,10 +388,8 @@ export default function CheckIn() {
       }
       toast.error(errMsg);
       setLocationStatus("error");
-    } finally {
       setIsSubmitting(false);
-      setIsLocating(false);
-      fetchTodayAttendance();
+    } finally {
     }
   };
 
@@ -312,85 +406,105 @@ export default function CheckIn() {
     fetchTodayAttendance();
   };
 
-  const captureSelfie = () => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (imageSrc) {
-        setCapturedSelfie(imageSrc);
-      }
-    }
-  };
-
-  const uploadSelfieToStorage = async (): Promise<string | null> => {
-    if (!capturedSelfie || !selectedProfileId) {
-      toast.error("No selfie captured or profile selected");
-      return null;
-    }
-
-    setIsUploadingSelfie(true);
-    try {
-      // Convert base64 to blob
-      const response = await fetch(capturedSelfie);
-      const blob = await response.blob();
-
-      // Create unique filename
-      const now = new Date();
-      const timestamp = now.getTime();
-      const fileName = `${selectedProfileId}-${selfieMode}-${timestamp}.jpg`;
-
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from("attendance-selfies")
-        .upload(fileName, blob, {
-          contentType: "image/jpeg",
-          upsert: false,
-        });
-
-      if (error) throw error;
-
-      toast.success("Selfie uploaded successfully");
-      return data.path;
-    } catch (error: any) {
-      console.error("Selfie upload error:", error);
-      toast.error(error.message || "Failed to upload selfie");
-      return null;
-    } finally {
-      setIsUploadingSelfie(false);
-    }
-  };
-
-  const getSignedSelfieUrl = async (filePath: string): Promise<string | null> => {
-    try {
-      const { data, error } = await supabase.storage
-        .from("attendance-selfies")
-        .createSignedUrl(filePath, 3600); // 1 hour expiry
-
-      if (error) throw error;
-      return data.signedUrl;
-    } catch (error: any) {
-      console.error("Error creating signed URL:", error);
-      return null;
-    }
-  };
-
-  const resetWebcam = () => {
-    setShowWebcam(false);
-    setCapturedSelfie(null);
-    setSelfieMode(null);
-    setCameraPermissionError(null);
-  };
-
-  const viewSelfie = async (filePath: string | null) => {
-    if (!filePath) {
-      toast.error("No selfie available");
+  const verifyFaceAndSaveAttendance = async () => {
+    const video = webcamRef.current?.video;
+    
+    if (!video) {
+      toast.error("Camera is not ready");
       return;
     }
 
-    const url = await getSignedSelfieUrl(filePath);
-    if (url) {
-      setSelectedImageUrl(url);
-      setShowImageModal(true);
+    if (cameraPermissionError) {
+      toast.error("Camera permission denied", {
+        description: "Camera access is required for face verification."
+      });
+      return;
     }
+
+    if (!faceProfile || !isValidFaceDescriptor(faceProfile.face_descriptor)) {
+      toast.error("Registration Required", {
+        description: "Please register your face before marking attendance."
+      });
+      return;
+    }
+
+    if (!pendingCoords || pendingDistanceMeters === null || pendingDistanceMeters > 100) {
+      toast.error("Outside office radius", {
+        description: "Attendance allowed only within 100 meters of the office."
+      });
+      return;
+    }
+
+    setIsVerifyingFace(true);
+    try {
+      const liveDescriptor = await getFaceDescriptorFromVideo(video);
+      const match = compareFaceDescriptors(liveDescriptor, faceProfile.face_descriptor);
+      
+      const faceDistance = match.distance;
+      const faceScore = match.score;
+      const faceMatchPercentage = Math.round(faceScore * 100);
+      const faceVerified = faceDistance <= 0.45;
+      
+      const gpsVerified = pendingCoords !== null && pendingDistanceMeters <= 100;
+      const distanceMeters = pendingDistanceMeters;
+
+      console.log("FINAL ATTENDANCE CHECK", {
+        gpsVerified,
+        distanceMeters,
+        faceDistance,
+        faceScore,
+        faceMatchPercentage,
+        faceVerified
+      });
+
+      if (!faceVerified) {
+        toast.error("Face Not Matched", {
+          description: "The detected face does not match the registered face profile. Please try again."
+        });
+        return;
+      }
+
+      if (
+        gpsVerified === true &&
+        faceVerified === true &&
+        faceMatchPercentage >= 0 &&
+        distanceMeters <= 100
+      ) {
+        await saveAttendance(pendingCoords, pendingDistanceMeters, match.score);
+        setShowFaceCamera(false);
+        setPendingCoords(null);
+        setPendingDistanceMeters(null);
+        await fetchTodayAttendance();
+      } else {
+        return;
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || "";
+      if (errorMessage.includes("No face detected")) {
+        toast.error("No Face Detected", {
+          description: "Please position your face inside the camera frame."
+        });
+      } else if (errorMessage.includes("Multiple faces detected")) {
+        toast.error("Multiple Faces Detected", {
+          description: "Only one person should be visible during attendance."
+        });
+      } else {
+        toast.error("Face Not Matched", {
+          description: "The detected face does not match the registered face profile. Please try again."
+        });
+      }
+    } finally {
+      setIsVerifyingFace(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  const resetFaceCamera = () => {
+    setShowFaceCamera(false);
+    setPendingCoords(null);
+    setPendingDistanceMeters(null);
+    setCameraPermissionError(null);
+    setIsSubmitting(false);
   };
 
 const formatISTTime = (time: string | null) => {
@@ -453,27 +567,13 @@ const formatISTTime = (time: string | null) => {
           <p className="text-slate-400 mt-1">Sleek GPS-verified check-in & check-out system.</p>
         </div>
 
-        {/* Developer Mocking Panel */}
-        <div className="bg-[#13223D]/90 border border-slate-700/50 rounded-xl p-3.5 flex flex-col gap-2 max-w-sm shadow-lg backdrop-blur-md">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-amber-400 font-bold tracking-wide uppercase">
-              <Shield className="w-3.5 h-3.5" />
-              Dev Settings
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={simulateLocation}
-                onChange={(e) => setSimulateLocation(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
+        <div className="bg-[#13223D]/90 border border-slate-700/50 rounded-xl p-3.5 text-xs text-slate-300 max-w-sm shadow-lg backdrop-blur-md">
+          <div className="flex items-center gap-1.5 text-blue-400 font-bold tracking-wide uppercase">
+            <Shield className="w-3.5 h-3.5" />
+            GPS + Face Required
           </div>
-          <p className="text-[11px] text-slate-300 leading-tight">
-            {simulateLocation 
-              ? "Simulating office coordinates (13.0827, 80.2707). Distance: 0m (In Premises)."
-              : "Using real browser GPS location. Proximity will be verified."}
+          <p className="mt-1 leading-tight">
+            Attendance is saved only after real browser GPS and live face verification succeed.
           </p>
         </div>
       </div>
@@ -492,31 +592,18 @@ const formatISTTime = (time: string | null) => {
             <div className="space-y-5">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="profile" className="text-slate-300 font-medium text-sm">
-                  {isAdmin ? "Select Profile" : "Profile"}
+                  Profile
                 </Label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                     <User className="w-4 h-4" />
                   </div>
-                  {isAdmin ? (
-                    <select
-                      id="profile"
-                      className="flex h-12 w-full items-center justify-between rounded-xl border border-slate-700/80 bg-[#162A4E] pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer"
-                      value={selectedProfileId}
-                      onChange={(e) => setSelectedProfileId(e.target.value)}
-                    >
-                      <option value="">-- Select Profile --</option>
-                      {profiles.map((profile) => (
-                        <option key={profile.id} value={profile.id}>
-                          {profile.full_name || profile.display_name || profile.email || "Unnamed Profile"}{profile.employee_code ? ` (${profile.employee_code})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="flex h-12 w-full items-center rounded-xl border border-slate-700/80 bg-[#162A4E] pl-10 pr-3 py-2 text-sm text-white">
-                      {displayName || user?.email || "Your profile"}
-                    </div>
-                  )}
+                  <div
+                    id="profile"
+                    className="flex h-12 w-full items-center rounded-xl border border-slate-700/80 bg-[#162A4E] pl-10 pr-3 py-2 text-sm text-white"
+                  >
+                    {currentProfileName}
+                  </div>
                 </div>
               </div>
 
@@ -566,13 +653,48 @@ const formatISTTime = (time: string | null) => {
                     )}
                   </div>
                 )}
+                <Button
+                  type="button"
+                  onClick={verifyGpsLocation}
+                  disabled={isLocating || isSubmitting}
+                  variant="outline"
+                  className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+                >
+                  {isLocating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <MapPin className="w-4 h-4 mr-2" />}
+                  Verify GPS
+                </Button>
+              </div>
+
+              <div className="bg-[#0B1528]/80 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-indigo-400" />
+                    Face Verification
+                  </span>
+                  {hasValidFaceProfile ? (
+                    <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Face Profile Ready
+                    </span>
+                  ) : (
+                    <span className="text-amber-400 flex items-center gap-1 font-medium">
+                      <AlertTriangle className="w-3 h-3" />
+                      Registration Required
+                    </span>
+                  )}
+                </div>
+                {!hasValidFaceProfile && (
+                  <p className="text-xs text-slate-400">
+                    Please register face before attendance. Admins can add it in Employee Management.
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
           <Button
             onClick={handleMarkAttendance}
-            disabled={isSubmitting || isLocating || !selectedProfileId}
+            disabled={isSubmitting || isLocating || !currentProfileId || !hasValidFaceProfile || !hasValidGps}
             className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold h-12 rounded-xl mt-6 transition-all duration-300 shadow-md shadow-blue-500/10 flex items-center justify-center gap-2 border border-blue-500/20 active:scale-[0.98]"
           >
             {isLocating ? (
@@ -624,6 +746,13 @@ const formatISTTime = (time: string | null) => {
                   During check-out, working hours are computed automatically. If the total working hours are <strong className="text-slate-200">less than 4 hours</strong>, status is marked <strong className="text-indigo-400">Half Day</strong>.
                 </p>
               </div>
+
+              <div className="p-3 bg-[#0B1528]/80 border border-slate-800 rounded-xl">
+                <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wide">Rule 4: Live Face Match</span>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                  Check-in and check-out require one live face to match the registered face profile before attendance is saved.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -638,11 +767,11 @@ const formatISTTime = (time: string | null) => {
               <div className="space-y-3.5 text-sm text-slate-300">
                 <div className="flex justify-between items-center py-2 border-b border-slate-800/80">
                   <span className="text-slate-400">Office Latitude</span>
-                  <span className="font-mono text-slate-200 font-medium">13.0827° N</span>
+                  <span className="font-mono text-slate-200 font-medium">{OFFICE_LAT.toFixed(6)}° N</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-slate-800/80">
                   <span className="text-slate-400">Office Longitude</span>
-                  <span className="font-mono text-slate-200 font-medium">80.2707° E</span>
+                  <span className="font-mono text-slate-200 font-medium">{OFFICE_LNG.toFixed(6)}° E</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-slate-800/80">
                   <span className="text-slate-400">Allowed Perimeter</span>
@@ -683,7 +812,7 @@ const formatISTTime = (time: string | null) => {
           <div className="text-center py-16 border border-dashed border-slate-800 rounded-xl bg-[#0B1528]/40">
             <MapPin className="w-12 h-12 text-slate-600 mx-auto mb-3 animate-bounce" />
             <p className="text-slate-400 font-medium">No attendance records have been registered today.</p>
-            <p className="text-xs text-slate-600 mt-1">Select an active employee above to mark check-in.</p>
+            <p className="text-xs text-slate-600 mt-1">Use Mark Attendance above to record your check-in.</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-800/80">
@@ -695,6 +824,7 @@ const formatISTTime = (time: string | null) => {
                   <th className="py-4 px-4 font-medium">Check Out</th>
                   <th className="py-4 px-4 font-medium">Working Hours</th>
                   <th className="py-4 px-4 font-medium">Status</th>
+                  <th className="py-4 px-4 font-medium text-center">Face</th>
                   <th className="py-4 px-4 font-medium text-center">GPS Coordinates</th>
                   {DEMO_MODE && <th className="py-4 px-4 font-medium text-right">Actions</th>}
                 </tr>
@@ -742,6 +872,18 @@ const formatISTTime = (time: string | null) => {
                         {getStatusBadge(record.status)}
                       </td>
                       <td className="py-4 px-4 text-center">
+                        {record.face_verified ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-semibold text-emerald-400">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Verified {record.face_match_score !== null && record.face_match_score !== undefined ? `(${Math.round(record.face_match_score * 100)}%)` : ""}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50 text-[11px] font-semibold text-slate-500">
+                            Not Verified
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-4 text-center">
                         {record.latitude && record.longitude ? (
                           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50 text-[11px] font-mono text-slate-400 group-hover:text-blue-400 transition-colors">
                             <MapPin className="w-3.5 h-3.5 text-blue-500" />
@@ -771,126 +913,69 @@ const formatISTTime = (time: string | null) => {
         )}
       </div>
 
-      {/* Webcam Modal */}
-      {showWebcam && (
+      {/* Face Verification Modal */}
+      {showFaceCamera && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-[#0B1528] border border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <Camera className="w-5 h-5 text-blue-400" />
-                Capture {selfieMode === "check-in" ? "Check-In" : "Check-Out"} Selfie
+                Live Face Verification
               </h3>
-              {!capturedSelfie && (
-                <button onClick={resetWebcam} className="text-slate-400 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              )}
+              <button onClick={resetFaceCamera} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {cameraPermissionError ? (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 mb-4">
-                <p className="font-semibold mb-2">Camera Permission Error</p>
+                <p className="font-semibold mb-2">Camera permission denied</p>
                 <p className="text-sm">{cameraPermissionError}</p>
                 <Button
-                  onClick={resetWebcam}
+                  onClick={resetFaceCamera}
                   variant="outline"
                   className="mt-4 border-red-500/20 text-red-400 hover:bg-red-500/10"
                 >
                   Close
                 </Button>
               </div>
-            ) : !capturedSelfie ? (
+            ) : (
               <div className="space-y-4">
                 <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
                   <Webcam
                     ref={webcamRef}
+                    audio={false}
+                    mirrored
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
-                      setCameraPermissionError("Camera not found or permission denied. Please check your device.");
+                      setCameraPermissionError("Camera permission denied");
                     }}
                   />
                 </div>
+                <p className="text-sm text-slate-400">
+                  Keep one face centered. Attendance is saved only after a live match succeeds.
+                </p>
                 <div className="flex gap-3">
                   <Button
-                    onClick={captureSelfie}
+                    onClick={verifyFaceAndSaveAttendance}
                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                    disabled={isVerifyingFace}
                   >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Capture Selfie
+                    {isVerifyingFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
+                    Verify Face & Mark
                   </Button>
                   <Button
-                    onClick={resetWebcam}
+                    onClick={resetFaceCamera}
                     variant="outline"
                     className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
+                    disabled={isVerifyingFace}
                   >
                     Cancel
                   </Button>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
-                  <img src={capturedSelfie} alt="Captured selfie" className="w-full" />
-                </div>
-                <p className="text-sm text-slate-400">
-                  {isUploadingSelfie ? "Uploading selfie..." : "Selfie captured. Click 'Save' to proceed."}
-                </p>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={captureSelfie}
-                    variant="outline"
-                    className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
-                    disabled={isUploadingSelfie}
-                  >
-                    Retake
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      const filePath = await uploadSelfieToStorage();
-                      if (filePath) {
-                        // Selfie uploaded successfully, caller will handle saving to DB
-                        resetWebcam();
-                      }
-                    }}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                    disabled={isUploadingSelfie}
-                  >
-                    {isUploadingSelfie ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                    Save Selfie
-                  </Button>
-                </div>
-              </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Image Viewer Modal */}
-      {showImageModal && selectedImageUrl && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0B1528] border border-slate-700 rounded-2xl p-6 max-w-2xl w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <Image className="w-5 h-5 text-blue-400" />
-                Selfie Preview
-              </h3>
-              <button
-                onClick={() => setShowImageModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
-              <img src={selectedImageUrl} alt="Selfie preview" className="w-full" />
-            </div>
-            <Button
-              onClick={() => setShowImageModal(false)}
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold"
-            >
-              Close
-            </Button>
           </div>
         </div>
       )}

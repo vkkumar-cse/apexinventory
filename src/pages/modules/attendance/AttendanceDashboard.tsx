@@ -40,6 +40,8 @@ type RecentCheckIn = {
   status: string;
   latitude: number | null;
   longitude: number | null;
+  face_verified: boolean | null;
+  face_match_score: number | null;
 };
 
 type ProfileLite = {
@@ -59,13 +61,15 @@ type AttendanceRecord = {
   status: string | null;
   latitude: number | null;
   longitude: number | null;
+  face_verified: boolean | null;
+  face_match_score: number | null;
 };
 
 type DashboardRow = AttendanceRecord & {
   profile?: ProfileLite | null;
 };
 
-type WorkerTodayAttendance = Pick<AttendanceRecord, "check_in" | "check_out" | "status">;
+type WorkerTodayAttendance = Pick<AttendanceRecord, "check_in" | "check_out" | "status" | "face_verified" | "face_match_score">;
 
 type WorkerMonthlyAttendance = {
   status: string | null;
@@ -88,12 +92,27 @@ export default function AttendanceDashboard() {
     checkedOut: boolean;
     checkOutTime: string | null;
     status: string | null;
-  }>({ checkedIn: false, checkInTime: null, checkedOut: false, checkOutTime: null, status: null });
+    faceVerified: boolean;
+    faceMatchScore: number | null;
+  }>({
+    checkedIn: false,
+    checkInTime: null,
+    checkedOut: false,
+    checkOutTime: null,
+    status: null,
+    faceVerified: false,
+    faceMatchScore: null,
+  });
   const [workerSummary, setWorkerSummary] = useState({
     presentDays: 0,
     lateDays: 0,
     halfDays: 0,
     totalWorkingHours: 0,
+  });
+  const [payrollSummary, setPayrollSummary] = useState({
+    generatedRows: 0,
+    totalPayable: 0,
+    myPayable: 0,
   });
 
   const getTodayDateString = () => {
@@ -110,6 +129,7 @@ export default function AttendanceDashboard() {
     setLoading(true);
     try {
       const today = getTodayDateString();
+      const payrollMonth = `${today.slice(0, 7)}-01`;
 
       if (isAdmin) {
         // --- ADMIN DASHBOARD DATA ---
@@ -133,7 +153,7 @@ export default function AttendanceDashboard() {
         // Fetch today's check-ins — cast to any[] to bypass broken schema types
         const { data: checkinsRaw, error: attErr } = await supabase
           .from("attendance" as any)
-          .select("id, employee_id, attendance_date, check_in, check_out, status, latitude, longitude")
+          .select("id, employee_id, attendance_date, check_in, check_out, status, latitude, longitude, face_verified, face_match_score")
           .eq("attendance_date", today);
         
         if (attErr) throw attErr;
@@ -179,16 +199,31 @@ export default function AttendanceDashboard() {
             time: c.check_in ? new Date(c.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-",
             status: c.status || "present",
             latitude: c.latitude,
-            longitude: c.longitude
+            longitude: c.longitude,
+            face_verified: c.face_verified,
+            face_match_score: c.face_match_score
           };
         });
 
         setRecentCheckIns(recent);
 
+        const { data: payrollRaw } = await supabase
+          .from("monthly_payroll" as any)
+          .select("monthly_payable")
+          .eq("payroll_month", payrollMonth);
+
+        const payrollRows = (payrollRaw ?? []) as any[];
+        setPayrollSummary({
+          generatedRows: payrollRows.length,
+          totalPayable: payrollRows.reduce((total, row) => total + Number(row.monthly_payable ?? 0), 0),
+          myPayable: 0,
+        });
+
       } else {
         // --- WORKER DASHBOARD DATA ---
-        setWorkerTodayStatus({ checkedIn: false, checkInTime: null, checkedOut: false, checkOutTime: null, status: null });
+        setWorkerTodayStatus({ checkedIn: false, checkInTime: null, checkedOut: false, checkOutTime: null, status: null, faceVerified: false, faceMatchScore: null });
         setWorkerSummary({ presentDays: 0, lateDays: 0, halfDays: 0, totalWorkingHours: 0 });
+        setPayrollSummary({ generatedRows: 0, totalPayable: 0, myPayable: 0 });
 
         if (user?.id) {
           const profileId = user.id;
@@ -196,7 +231,7 @@ export default function AttendanceDashboard() {
             // Fetch today's attendance — cast to any
             const { data: todayRaw } = await supabase
               .from("attendance" as any)
-              .select("check_in, check_out, status")
+              .select("check_in, check_out, status, face_verified, face_match_score")
               .eq("employee_id", profileId)
               .eq("attendance_date", today)
               .maybeSingle();
@@ -209,7 +244,9 @@ export default function AttendanceDashboard() {
                 checkInTime: todayRecords.check_in ? new Date(todayRecords.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : null,
                 checkedOut: !!todayRecords.check_out,
                 checkOutTime: todayRecords.check_out ? new Date(todayRecords.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : null,
-                status: todayRecords.status || "present"
+                status: todayRecords.status || "present",
+                faceVerified: !!todayRecords.face_verified,
+                faceMatchScore: todayRecords.face_match_score ?? null
               });
             }
 
@@ -243,6 +280,19 @@ export default function AttendanceDashboard() {
                 totalWorkingHours: Number(hours.toFixed(1))
               });
             }
+
+            const { data: payrollRaw } = await supabase
+              .from("monthly_payroll" as any)
+              .select("monthly_payable")
+              .eq("employee_id", profileId)
+              .eq("payroll_month", payrollMonth)
+              .maybeSingle();
+
+            setPayrollSummary({
+              generatedRows: payrollRaw ? 1 : 0,
+              totalPayable: 0,
+              myPayable: Number((payrollRaw as any)?.monthly_payable ?? 0),
+            });
           }
       }
     } catch (e) {
@@ -260,6 +310,18 @@ export default function AttendanceDashboard() {
     if (s === "half-day") return <Badge className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs">Half Day</Badge>;
     return <Badge>{status}</Badge>;
   };
+
+  const getFaceBadge = (verified: boolean | null, score?: number | null) => {
+    if (!verified) return <Badge className="bg-slate-800 text-slate-400 border border-slate-700 text-xs">Face Pending</Badge>;
+    return (
+      <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">
+        Face Verified{score !== null && score !== undefined ? ` ${Math.round(score * 100)}%` : ""}
+      </Badge>
+    );
+  };
+
+  const formatMoney = (value: number) =>
+    `₹${Number(value ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
   if (loading) {
     return (
@@ -367,7 +429,8 @@ export default function AttendanceDashboard() {
                       <div key={c.id} className="py-3 flex justify-between items-center">
                         <div>
                           <div className="font-semibold text-slate-200">{c.name}</div>
-                          <div className="text-xs text-slate-500 font-mono">{c.code} | Checked in at {c.time}</div>
+                        <div className="text-xs text-slate-500 font-mono">{c.code} | Checked in at {c.time}</div>
+                        <div className="mt-1">{getFaceBadge(c.face_verified, c.face_match_score)}</div>
                           {c.latitude && (
                             <div className="text-[10px] text-slate-550 flex items-center gap-0.5 mt-0.5">
                               <MapPin className="h-2.5 w-2.5 text-blue-400" />
@@ -428,9 +491,22 @@ export default function AttendanceDashboard() {
                     Payroll Overview
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="pt-4 text-center py-6 text-xs text-slate-500">
-                  <p className="font-medium">Monthly payout projections ready</p>
-                  <p className="text-[10px] text-slate-550 mt-1.5 italic">Future Feature: Automated pay calculations & generation</p>
+                <CardContent className="pt-4 py-6 text-xs text-slate-400">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <span>Generated Rows</span>
+                    <span className="font-bold text-slate-100">{payrollSummary.generatedRows}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2">
+                    <span>Total Payable</span>
+                    <span className="font-extrabold text-emerald-400">{formatMoney(payrollSummary.totalPayable)}</span>
+                  </div>
+                  <Button
+                    onClick={() => navigate("/attendance/payroll")}
+                    variant="outline"
+                    className="w-full mt-4 border-slate-700 text-slate-300 hover:bg-slate-800"
+                  >
+                    Open Payroll
+                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -455,6 +531,10 @@ export default function AttendanceDashboard() {
                       <div className="flex justify-between py-2 border-b border-slate-800">
                         <span className="text-slate-400 text-sm">Today Status:</span>
                         <span className="font-medium">{workerTodayStatus.checkedIn ? getStatusBadge(workerTodayStatus.status) : <Badge variant="secondary" className="text-xs bg-slate-850">Not Checked In</Badge>}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-slate-800">
+                        <span className="text-slate-400 text-sm">Face Verified:</span>
+                        <span className="font-medium">{getFaceBadge(workerTodayStatus.faceVerified, workerTodayStatus.faceMatchScore)}</span>
                       </div>
                       <div className="flex justify-between py-2 border-b border-slate-800">
                         <span className="text-slate-400 text-sm">Check In Time:</span>
@@ -525,6 +605,32 @@ export default function AttendanceDashboard() {
                 </Card>
               </div>
 
+              <Card className="bg-slate-900/50 border-slate-800 text-white shadow-xl p-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                      <Coins className="w-5 h-5 text-emerald-400" />
+                      Payroll Summary
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      {payrollSummary.generatedRows > 0 ? "Current month payroll generated." : "Current month payroll has not been generated yet."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Monthly Payable</div>
+                      <div className="text-2xl font-extrabold text-emerald-400">{formatMoney(payrollSummary.myPayable)}</div>
+                    </div>
+                    <Button
+                      onClick={() => navigate("/attendance/payroll")}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    >
+                      View Payroll
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
               {/* Shortcut buttons section */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
                 <Card className="bg-slate-900/40 border-slate-800 hover:border-slate-700 transition-all p-4 cursor-pointer flex justify-between items-center group" onClick={() => navigate("/attendance/history")}>
@@ -553,7 +659,7 @@ export default function AttendanceDashboard() {
                   <ArrowRight className="h-4 w-4 text-slate-500 group-hover:translate-x-1 transition-transform" />
                 </Card>
 
-                <Card className="bg-slate-900/40 border-slate-800 hover:border-slate-700 transition-all p-4 cursor-pointer flex justify-between items-center group" onClick={() => navigate("/attendance/holidays")}>
+                <Card className="bg-slate-900/40 border-slate-800 hover:border-slate-700 transition-all p-4 cursor-pointer flex justify-between items-center group" onClick={() => navigate("/attendance/payroll")}>
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-slate-800 rounded-lg text-emerald-400 group-hover:bg-emerald-500/10 transition-colors">
                       <Coins className="h-5 w-5" />
