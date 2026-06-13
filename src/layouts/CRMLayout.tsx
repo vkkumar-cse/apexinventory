@@ -2,7 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Handshake, KanbanSquare, LogOut, ChevronLeft, Settings } from "lucide-react";
+import { BarChart3, FileText, Handshake, KanbanSquare, LogOut, ChevronLeft, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apexLogo from "@/assets/apex-logo.jpeg";
 
@@ -10,8 +10,10 @@ export function CRMLayout({ children }: { children: React.ReactNode }) {
   const { user, role, signOut, displayName, isAdmin } = useAuth();
 
   const nav = [
-    { to: "/crm", label: "Leads", icon: Handshake, end: true },
+    { to: "/crm/dashboard", label: "Dashboard", icon: BarChart3, end: true },
+    { to: "/crm/leads", label: "Leads", icon: Handshake, end: false },
     { to: "/crm/pipeline", label: "Pipeline", icon: KanbanSquare, end: true },
+    { to: "/crm/reports", label: "Reports", icon: FileText, end: true },
     { to: "/crm/settings", label: "Settings", icon: Settings, end: true },
   ];
 

@@ -66,6 +66,13 @@ const DEMO_MODE = false;
 const OFFICE_LAT = 13.138576;
 const OFFICE_LNG = 80.173716;
 const ALLOWED_RADIUS = 100; // in meters
+const FACE_DISTANCE_THRESHOLD = 0.45;
+
+type VerifiedGpsCoords = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+};
 
 export default function CheckIn() {
   const { user, displayName } = useAuth();
@@ -76,7 +83,7 @@ export default function CheckIn() {
   const [faceProfile, setFaceProfile] = useState<EmployeeFaceProfile | null>(null);
   
   // Geolocation State
-  const [currentCoords, setCurrentCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [currentCoords, setCurrentCoords] = useState<VerifiedGpsCoords | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "fetching" | "success" | "error">("idle");
   const [distanceFromOffice, setDistanceFromOffice] = useState<number | null>(null);
 
@@ -85,7 +92,7 @@ export default function CheckIn() {
   const [showFaceCamera, setShowFaceCamera] = useState(false);
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
-  const [pendingCoords, setPendingCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pendingCoords, setPendingCoords] = useState<VerifiedGpsCoords | null>(null);
   const [pendingDistanceMeters, setPendingDistanceMeters] = useState<number | null>(null);
   const currentProfileId = user?.id ?? "";
   const currentProfile = profiles.find((profile) => profile.id === currentProfileId);
@@ -202,7 +209,7 @@ export default function CheckIn() {
   };
 
   // Get current real browser position.
-  const getCoordinates = (): Promise<{ latitude: number; longitude: number }> => {
+  const getCoordinates = (): Promise<VerifiedGpsCoords> => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error("Geolocation is not supported by your browser"));
@@ -211,9 +218,19 @@ export default function CheckIn() {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) {
+            reject(new Error("Browser GPS did not return valid device location data."));
+            return;
+          }
+
           resolve({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
+            latitude,
+            longitude,
+            accuracy,
           });
         },
         (error) => {
@@ -256,7 +273,7 @@ export default function CheckIn() {
   };
 
   const saveAttendance = async (
-    coords: { latitude: number; longitude: number },
+    coords: VerifiedGpsCoords,
     distanceMeters: number,
     faceMatchScore: number
   ) => {
@@ -443,9 +460,9 @@ export default function CheckIn() {
       const faceDistance = match.distance;
       const faceScore = match.score;
       const faceMatchPercentage = Math.round(faceScore * 100);
-      const faceVerified = faceDistance <= 0.45;
+      const faceVerified = faceDistance <= FACE_DISTANCE_THRESHOLD;
       
-      const gpsVerified = pendingCoords !== null && pendingDistanceMeters <= 100;
+      const gpsVerified = pendingCoords !== null && pendingDistanceMeters !== null && pendingDistanceMeters <= ALLOWED_RADIUS;
       const distanceMeters = pendingDistanceMeters;
 
       console.log("FINAL ATTENDANCE CHECK", {
@@ -458,26 +475,22 @@ export default function CheckIn() {
       });
 
       if (!faceVerified) {
-        toast.error("Face Not Matched", {
-          description: "The detected face does not match the registered face profile. Please try again."
+        toast.error("Face Not Matched");
+        return;
+      }
+
+      if (!gpsVerified || !pendingCoords || distanceMeters === null || distanceMeters > ALLOWED_RADIUS) {
+        toast.error("Outside office radius", {
+          description: "Attendance allowed only within 100 meters of the office."
         });
         return;
       }
 
-      if (
-        gpsVerified === true &&
-        faceVerified === true &&
-        faceMatchPercentage >= 0 &&
-        distanceMeters <= 100
-      ) {
-        await saveAttendance(pendingCoords, pendingDistanceMeters, match.score);
-        setShowFaceCamera(false);
-        setPendingCoords(null);
-        setPendingDistanceMeters(null);
-        await fetchTodayAttendance();
-      } else {
-        return;
-      }
+      await saveAttendance(pendingCoords, distanceMeters, faceScore);
+      setShowFaceCamera(false);
+      setPendingCoords(null);
+      setPendingDistanceMeters(null);
+      await fetchTodayAttendance();
     } catch (error: any) {
       const errorMessage = error.message || "";
       if (errorMessage.includes("No face detected")) {
@@ -489,9 +502,7 @@ export default function CheckIn() {
           description: "Only one person should be visible during attendance."
         });
       } else {
-        toast.error("Face Not Matched", {
-          description: "The detected face does not match the registered face profile. Please try again."
-        });
+        toast.error("Face Not Matched");
       }
     } finally {
       setIsVerifyingFace(false);

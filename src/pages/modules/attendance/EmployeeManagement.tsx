@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { WORKER_MODULES, normalizeModuleAccess } from "@/lib/modules";
 import Webcam from "react-webcam";
-import { getFaceDescriptorFromVideo } from "@/lib/faceRecognition";
+import { getFaceDescriptorFromVideo, isValidFaceDescriptor, type FaceDescriptor } from "@/lib/faceRecognition";
 
 type ProfileStatus = "pending" | "approved" | "rejected";
 type ProfileRole = "admin" | "worker";
@@ -80,6 +80,16 @@ const REGISTRATION_STEPS = [
   { label: "Slight Down", instruction: "Tilt your head slightly downwards." },
 ];
 
+const averageFaceDescriptors = (descriptors: FaceDescriptor[]): FaceDescriptor => {
+  const averageDescriptor = new Array(128).fill(0);
+
+  for (let i = 0; i < averageDescriptor.length; i++) {
+    averageDescriptor[i] = descriptors.reduce((sum, descriptor) => sum + descriptor[i], 0) / descriptors.length;
+  }
+
+  return averageDescriptor;
+};
+
 export default function EmployeeManagement() {
   const { user: me } = useAuth();
   const [profiles, setProfiles] = useState<EmployeeProfile[]>([]);
@@ -92,7 +102,7 @@ export default function EmployeeManagement() {
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
   const [registrationStep, setRegistrationStep] = useState<number>(0);
-  const [capturedDescriptors, setCapturedDescriptors] = useState<number[][]>([]);
+  const [capturedDescriptors, setCapturedDescriptors] = useState<FaceDescriptor[]>([]);
 
   const fetchProfiles = async () => {
     setLoading(true);
@@ -284,11 +294,11 @@ export default function EmployeeManagement() {
       const newDescriptors = [...capturedDescriptors, descriptor];
       setCapturedDescriptors(newDescriptors);
       
-      if (registrationStep < 4) {
+      if (registrationStep < REGISTRATION_STEPS.length - 1) {
         setRegistrationStep(registrationStep + 1);
         toast.success(`Captured ${REGISTRATION_STEPS[registrationStep].label}! Proceed to next pose.`);
       } else {
-        setRegistrationStep(5);
+        setRegistrationStep(REGISTRATION_STEPS.length);
         toast.success("All 5 poses captured successfully! Click 'Save Face Profile' below to finish.");
       }
     } catch (err: any) {
@@ -299,21 +309,19 @@ export default function EmployeeManagement() {
   };
 
   const registerFaceDescriptor = async () => {
-    if (!selectedProfileId || capturedDescriptors.length < 5) {
+    if (!selectedProfileId || capturedDescriptors.length !== REGISTRATION_STEPS.length) {
       toast.error("Please capture all 5 face samples first.");
+      return;
+    }
+
+    if (!capturedDescriptors.every(isValidFaceDescriptor)) {
+      toast.error("Face capture failed. Please reset and capture all 5 samples again.");
       return;
     }
 
     setIsRegisteringFace(true);
     try {
-      const averageDescriptor = new Array(128).fill(0);
-      for (let i = 0; i < 128; i++) {
-        let sum = 0;
-        for (let j = 0; j < 5; j++) {
-          sum += capturedDescriptors[j][i];
-        }
-        averageDescriptor[i] = sum / 5;
-      }
+      const averageDescriptor = averageFaceDescriptors(capturedDescriptors);
 
       const { error } = await (supabase as any)
         .from("employee_face_profiles")
@@ -736,7 +744,7 @@ export default function EmployeeManagement() {
                   })}
                 </div>
 
-                {registrationStep < 5 ? (
+                {registrationStep < REGISTRATION_STEPS.length ? (
                   <div className="bg-[#162A4E] border border-blue-500/20 rounded-xl p-3.5 text-center text-sm shadow-md animate-fade-in">
                     <span className="text-xs uppercase tracking-wider font-extrabold text-blue-400">Current Pose Instruction</span>
                     <p className="mt-1 text-slate-200 font-semibold">{REGISTRATION_STEPS[registrationStep].instruction}</p>
@@ -764,7 +772,7 @@ export default function EmployeeManagement() {
                   Only the numeric mathematical facial features are compiled. Face images are not stored.
                 </p>
                 <div className="flex gap-3">
-                  {registrationStep < 5 ? (
+                  {registrationStep < REGISTRATION_STEPS.length ? (
                     <Button
                       onClick={captureFaceSample}
                       className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold"

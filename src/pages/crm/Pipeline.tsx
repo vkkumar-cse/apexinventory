@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import type React from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,12 +33,14 @@ function statusVariant(status: LeadStatus) {
 }
 
 export default function Pipeline() {
+  const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<CRMPipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const [stages, setStages] = useState<CRMStage[]>([]);
   const [leads, setLeads] = useState<PipelineLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [boardLoading, setBoardLoading] = useState(false);
+  const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "CRM Pipeline - Apex Software";
@@ -110,6 +114,34 @@ export default function Pipeline() {
     }, {});
   }, [leads]);
 
+  async function moveLead(lead: PipelineLead, nextStage: CRMStage) {
+    if (lead.stage_id === nextStage.id) return;
+    const previousLeads = leads;
+    setLeads((current) => current.map((item) => item.id === lead.id ? { ...item, stage_id: nextStage.id } : item));
+
+    try {
+      const { error } = await (supabase as any)
+        .from("leads")
+        .update({ stage_id: nextStage.id, updated_at: new Date().toISOString() })
+        .eq("id", lead.id);
+
+      if (error) throw error;
+      await loadBoard(selectedPipelineId);
+      toast.success(`Moved ${lead.lead_no} to ${nextStage.name}`);
+    } catch (err: any) {
+      setLeads(previousLeads);
+      toast.error(err.message || "Failed to move lead");
+    }
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLDivElement>, stage: CRMStage) {
+    event.preventDefault();
+    const leadId = event.dataTransfer.getData("text/plain");
+    setDraggingLeadId(null);
+    const lead = leads.find((item) => item.id === leadId);
+    if (lead) moveLead(lead, stage);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -158,7 +190,12 @@ export default function Pipeline() {
           {stages.map((stage) => {
             const stageLeads = leadsByStage[stage.id] ?? [];
             return (
-              <Card key={stage.id} className="min-h-72 overflow-hidden border border-border/50">
+              <Card
+                key={stage.id}
+                className="min-h-72 overflow-hidden border border-border/50"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => handleDrop(event, stage)}
+              >
                 <div className="p-4 border-b border-border/50 bg-secondary/20">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -169,12 +206,23 @@ export default function Pipeline() {
                   </div>
                 </div>
 
-                <div className="p-3 space-y-3">
+                <div className="p-3 space-y-3 min-h-52">
                   {stageLeads.length === 0 ? (
                     <div className="py-10 text-center text-sm text-muted-foreground">No leads</div>
                   ) : (
                     stageLeads.map((lead) => (
-                      <div key={lead.id} className="rounded-md border border-border/50 bg-card p-3">
+                      <div
+                        key={lead.id}
+                        draggable
+                        onDragStart={(event) => {
+                          setDraggingLeadId(lead.id);
+                          event.dataTransfer.setData("text/plain", lead.id);
+                          event.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => setDraggingLeadId(null)}
+                        onClick={() => navigate(`/crm/leads/${lead.id}`)}
+                        className={`rounded-md border border-border/50 bg-card p-3 cursor-grab active:cursor-grabbing transition ${draggingLeadId === lead.id ? "opacity-50" : "hover:border-primary/40"}`}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <p className="font-medium leading-tight">{lead.company_name}</p>
                           <Badge variant={statusVariant(lead.status)} className="shrink-0">

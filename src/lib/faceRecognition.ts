@@ -9,7 +9,6 @@ export type FaceMatchResult = {
 };
 
 const MODEL_URL = "/models/face-api";
-const MATCH_DISTANCE_THRESHOLD = 0.55;
 
 let modelLoadPromise: Promise<void> | null = null;
 
@@ -47,10 +46,6 @@ export const getFaceDescriptorFromVideo = async (video: HTMLVideoElement): Promi
 export const compareFaceDescriptors = (liveDescriptor: FaceDescriptor, storedDescriptor: FaceDescriptor): FaceMatchResult => {
   const distance = faceapi.euclideanDistance(liveDescriptor, storedDescriptor);
   const score = Math.max(0, Math.min(1, 1 - distance));
-
-  if (distance > MATCH_DISTANCE_THRESHOLD) {
-    throw new Error("Face not matched");
-  }
 
   return {
     descriptor: liveDescriptor,

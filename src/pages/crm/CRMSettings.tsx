@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { GitBranch, Loader2, Pencil, Plus, Settings, Trash2 } from "lucide-react";
-import type { CRMPipeline, CRMStage } from "./LeadForm";
+import type { CRMLeadSource, CRMPipeline, CRMStage } from "./LeadForm";
 
 const pipelineSchema = z.object({
   name: z.string().trim().min(1, "Sales Process name is required").max(160),
@@ -25,6 +25,11 @@ const pipelineSchema = z.object({
 const stageSchema = z.object({
   name: z.string().trim().min(1, "Stage name is required").max(120),
   position: z.coerce.number().int("Position must be a whole number").min(1, "Position must be at least 1"),
+});
+
+const sourceSchema = z.object({
+  name: z.string().trim().min(1, "Source name is required").max(120),
+  active: z.boolean(),
 });
 
 const emptyPipelineForm = {
@@ -38,10 +43,16 @@ const emptyStageForm = {
   position: 1,
 };
 
+const emptySourceForm = {
+  name: "",
+  active: true,
+};
+
 export default function CRMSettings() {
   const { isAdmin } = useAuth();
   const [pipelines, setPipelines] = useState<CRMPipeline[]>([]);
   const [stages, setStages] = useState<CRMStage[]>([]);
+  const [sources, setSources] = useState<CRMLeadSource[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [stageLoading, setStageLoading] = useState(false);
@@ -53,11 +64,15 @@ export default function CRMSettings() {
   const [stageOpen, setStageOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<CRMStage | null>(null);
   const [stageForm, setStageForm] = useState(emptyStageForm);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<CRMLeadSource | null>(null);
+  const [sourceForm, setSourceForm] = useState(emptySourceForm);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     document.title = "CRM Settings - Apex Software";
     loadPipelines();
+    loadSources();
   }, []);
 
   useEffect(() => {
@@ -112,6 +127,20 @@ export default function CRMSettings() {
       toast.error(err.message || "Failed to load stages");
     } finally {
       setStageLoading(false);
+    }
+  }
+
+  async function loadSources() {
+    try {
+      const { data, error } = await (supabase as any)
+        .from("crm_lead_sources")
+        .select("*")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      setSources((data as CRMLeadSource[]) ?? []);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load lead sources");
     }
   }
 
@@ -242,6 +271,42 @@ export default function CRMSettings() {
       if (selectedPipeline) await loadStages(selectedPipeline.id);
     } catch (err: any) {
       toast.error(err.message || "Failed to delete stage");
+    }
+  }
+
+  function openNewSource() {
+    setEditingSource(null);
+    setSourceForm(emptySourceForm);
+    setSourceOpen(true);
+  }
+
+  function openEditSource(source: CRMLeadSource) {
+    setEditingSource(source);
+    setSourceForm({ name: source.name, active: source.active });
+    setSourceOpen(true);
+  }
+
+  async function saveSource() {
+    const parsed = sourceSchema.safeParse(sourceForm);
+    if (!parsed.success) {
+      toast.error(parsed.error.errors[0].message);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const { error } = editingSource
+        ? await (supabase as any).from("crm_lead_sources").update(parsed.data).eq("id", editingSource.id)
+        : await (supabase as any).from("crm_lead_sources").insert(parsed.data);
+
+      if (error) throw error;
+      toast.success(editingSource ? "Lead source updated" : "Lead source added");
+      setSourceOpen(false);
+      await loadSources();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save lead source");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -410,6 +475,42 @@ export default function CRMSettings() {
         </Card>
       </div>
 
+      <Card className="overflow-hidden border border-border/50">
+        <div className="p-5 border-b border-border/50 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Lead Sources</h2>
+            <p className="text-sm text-muted-foreground mt-1">Manage selectable sources for CRM leads.</p>
+          </div>
+          <Button onClick={openNewSource}>
+            <Plus className="h-4 w-4 mr-2" />Add Source
+          </Button>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sources.map((source) => (
+              <TableRow key={source.id}>
+                <TableCell className="font-medium">{source.name}</TableCell>
+                <TableCell><Badge variant={source.active ? "default" : "secondary"}>{source.active ? "Active" : "Disabled"}</Badge></TableCell>
+                <TableCell>
+                  <div className="flex justify-end">
+                    <Button variant="ghost" size="icon" onClick={() => openEditSource(source)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
       <Dialog open={pipelineOpen} onOpenChange={setPipelineOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -496,6 +597,47 @@ export default function CRMSettings() {
               </Button>
               <Button onClick={saveStage} disabled={saving}>
                 {saving ? "Saving..." : "Save Stage"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sourceOpen} onOpenChange={setSourceOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingSource ? `Edit Source: ${editingSource.name}` : "Add Source"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="source_name">Name</Label>
+              <Input
+                id="source_name"
+                placeholder="Lead source"
+                value={sourceForm.name}
+                onChange={(event) => setSourceForm({ ...sourceForm, name: event.target.value })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/20">
+              <div className="space-y-0.5">
+                <Label htmlFor="source_active" className="text-sm font-semibold">Active</Label>
+                <p className="text-xs text-muted-foreground">Disabled sources stay on old leads but are hidden for new leads.</p>
+              </div>
+              <Switch
+                id="source_active"
+                checked={sourceForm.active}
+                onCheckedChange={(checked) => setSourceForm({ ...sourceForm, active: checked })}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setSourceOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={saveSource} disabled={saving}>
+                {saving ? "Saving..." : "Save Source"}
               </Button>
             </div>
           </div>

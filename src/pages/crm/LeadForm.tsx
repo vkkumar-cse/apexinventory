@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,13 +25,30 @@ export type CRMStage = {
   position: number;
 };
 
+export type CRMLeadSource = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
+type ProfileOption = {
+  id: string;
+  full_name: string | null;
+  display_name: string | null;
+  email: string | null;
+};
+
 export type LeadFormValue = {
   id?: string;
   company_name: string;
   contact_person: string | null;
   phone: string | null;
   email: string | null;
+  source_id: string | null;
   requirement: string | null;
+  estimated_value: number | null;
+  address: string | null;
+  assigned_to: string | null;
   pipeline_id: string | null;
   stage_id: string | null;
   status: LeadStatus;
@@ -43,7 +60,11 @@ const schema = z.object({
   contact_person: z.string().trim().max(120).optional(),
   phone: z.string().trim().max(40).optional(),
   email: z.string().trim().email("Invalid email").max(255).optional().or(z.literal("")),
+  source_id: z.string().uuid("Source is required"),
   requirement: z.string().trim().max(1000).optional(),
+  estimated_value: z.coerce.number().min(0, "Estimated Value cannot be negative").optional().or(z.literal("")),
+  address: z.string().trim().max(1000).optional(),
+  assigned_to: z.string().uuid().optional().or(z.literal("")),
   pipeline_id: z.string().uuid("Pipeline is required"),
   stage_id: z.string().uuid("Stage is required"),
   status: z.enum(["in_progress", "won", "lost"]),
@@ -62,7 +83,11 @@ const emptyForm = {
   contact_person: "",
   phone: "",
   email: "",
+  source_id: "",
   requirement: "",
+  estimated_value: "",
+  address: "",
+  assigned_to: "",
   pipeline_id: "",
   stage_id: "",
   status: "in_progress" as LeadStatus,
@@ -73,6 +98,8 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
   const [form, setForm] = useState(emptyForm);
   const [pipelines, setPipelines] = useState<CRMPipeline[]>([]);
   const [stages, setStages] = useState<CRMStage[]>([]);
+  const [sources, setSources] = useState<CRMLeadSource[]>([]);
+  const [users, setUsers] = useState<ProfileOption[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -83,7 +110,11 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
         contact_person: lead.contact_person ?? "",
         phone: lead.phone ?? "",
         email: lead.email ?? "",
+        source_id: lead.source_id ?? "",
         requirement: lead.requirement ?? "",
+        estimated_value: lead.estimated_value?.toString() ?? "",
+        address: lead.address ?? "",
+        assigned_to: lead.assigned_to ?? "",
         pipeline_id: lead.pipeline_id ?? "",
         stage_id: lead.stage_id ?? "",
         status: lead.status ?? "in_progress",
@@ -96,7 +127,7 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
 
   useEffect(() => {
     if (!open) return;
-    loadPipelines();
+    loadMeta();
   }, [open]);
 
   useEffect(() => {
@@ -107,25 +138,48 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
     loadStages(form.pipeline_id);
   }, [open, form.pipeline_id]);
 
-  async function loadPipelines() {
+  async function loadMeta() {
     try {
       setLoadingMeta(true);
-      const { data, error } = await (supabase as any)
-        .from("crm_pipelines")
-        .select("*")
-        .eq("is_active", true)
-        .order("name", { ascending: true });
+      const [pipelineResult, sourceResult, userResult] = await Promise.all([
+        (supabase as any)
+          .from("crm_pipelines")
+          .select("*")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+        (supabase as any)
+          .from("crm_lead_sources")
+          .select("*")
+          .eq("active", true)
+          .order("name", { ascending: true }),
+        (supabase as any)
+          .from("profiles")
+          .select("id,full_name,display_name,email")
+          .eq("status", "approved")
+          .order("full_name", { ascending: true }),
+      ]);
 
-      if (error) throw error;
-      const rows = (data as CRMPipeline[]) ?? [];
+      if (pipelineResult.error) throw pipelineResult.error;
+      if (sourceResult.error) throw sourceResult.error;
+      if (userResult.error) throw userResult.error;
+      const rows = (pipelineResult.data as CRMPipeline[]) ?? [];
+      const sourceRows = (sourceResult.data as CRMLeadSource[]) ?? [];
       setPipelines(rows);
+      setSources(sourceRows);
+      setUsers((userResult.data as ProfileOption[]) ?? []);
 
-      if (!lead && rows.length > 0) {
-        setForm((current) => current.pipeline_id ? current : { ...current, pipeline_id: rows[0].id });
+      if (!lead) {
+        setForm((current) => ({
+          ...current,
+          pipeline_id: current.pipeline_id || rows[0]?.id || "",
+          source_id: current.source_id || sourceRows[0]?.id || "",
+        }));
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to load CRM pipelines");
+      toast.error(err.message || "Failed to load CRM metadata");
       setPipelines([]);
+      setSources([]);
+      setUsers([]);
     } finally {
       setLoadingMeta(false);
     }
@@ -171,7 +225,11 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
         contact_person: parsed.data.contact_person || null,
         phone: parsed.data.phone || null,
         email: parsed.data.email || null,
+        source_id: parsed.data.source_id,
         requirement: parsed.data.requirement || null,
+        estimated_value: parsed.data.estimated_value === "" ? null : Number(parsed.data.estimated_value ?? 0),
+        address: parsed.data.address || null,
+        assigned_to: parsed.data.assigned_to || null,
         pipeline_id: parsed.data.pipeline_id,
         stage_id: parsed.data.stage_id,
         status: parsed.data.status,
@@ -185,16 +243,16 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
     }
   }
 
-  const canSave = !saving && !loadingMeta && Boolean(form.pipeline_id) && Boolean(form.stage_id);
+  const canSave = !saving && !loadingMeta && Boolean(form.pipeline_id) && Boolean(form.stage_id) && Boolean(form.source_id);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="sticky top-0 z-10 border-b bg-background px-6 pb-4 pt-6">
           <DialogTitle>{lead ? `Edit Lead: ${lead.company_name}` : "Add Lead"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="company_name">Company Name</Label>
@@ -213,6 +271,57 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
                 value={form.contact_person}
                 onChange={(event) => setForm({ ...form, contact_person: event.target.value })}
               />
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="source_id">Source</Label>
+              <Select
+                value={form.source_id}
+                onValueChange={(value) => setForm({ ...form, source_id: value })}
+                disabled={loadingMeta || sources.length === 0}
+              >
+                <SelectTrigger id="source_id">
+                  <SelectValue placeholder={loadingMeta ? "Loading..." : "Select source"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sources.map((source) => (
+                    <SelectItem key={source.id} value={source.id}>
+                      {source.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="estimated_value">Estimated Value</Label>
+              <Input
+                id="estimated_value"
+                type="number"
+                min={0}
+                placeholder="0.00"
+                value={form.estimated_value}
+                onChange={(event) => setForm({ ...form, estimated_value: event.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assigned_to">Assigned To</Label>
+              <Select value={form.assigned_to} onValueChange={(value) => setForm({ ...form, assigned_to: value === "none" ? "" : value })}>
+                <SelectTrigger id="assigned_to">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {users.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name || profile.display_name || profile.email || profile.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -312,6 +421,17 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="address">Address</Label>
+            <Textarea
+              id="address"
+              placeholder="Lead address"
+              rows={2}
+              value={form.address}
+              onChange={(event) => setForm({ ...form, address: event.target.value })}
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>
             <Textarea
               id="notes"
@@ -322,15 +442,16 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={!canSave}>
-              {saving ? "Saving..." : "Save Lead"}
-            </Button>
-          </div>
         </div>
+
+        <DialogFooter className="sticky bottom-0 z-10 gap-2 border-t bg-background px-6 pb-6 pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={!canSave}>
+            {saving ? "Saving..." : "Save Lead"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

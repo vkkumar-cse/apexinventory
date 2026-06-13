@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Building2, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import LeadForm, { CRMPipeline, CRMStage, LeadFormValue, LeadStatus } from "./LeadForm";
+import { Building2, Eye, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import LeadForm, { CRMLeadSource, CRMPipeline, CRMStage, LeadFormValue, LeadStatus } from "./LeadForm";
 
 type Lead = LeadFormValue & {
   id: string;
@@ -17,6 +19,8 @@ type Lead = LeadFormValue & {
   updated_at: string;
   crm_pipelines?: Pick<CRMPipeline, "name"> | null;
   crm_stages?: Pick<CRMStage, "name"> | null;
+  crm_lead_sources?: Pick<CRMLeadSource, "name"> | null;
+  profiles?: { full_name: string | null; display_name: string | null; email: string | null } | null;
 };
 
 function formatDate(value: string) {
@@ -40,15 +44,30 @@ function statusVariant(status: LeadStatus) {
 }
 
 export default function Leads() {
+  const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [pipelines, setPipelines] = useState<CRMPipeline[]>([]);
+  const [stages, setStages] = useState<CRMStage[]>([]);
+  const [sources, setSources] = useState<CRMLeadSource[]>([]);
+  const [users, setUsers] = useState<{ id: string; full_name: string | null; display_name: string | null; email: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState({
+    pipeline_id: "all",
+    stage_id: "all",
+    status: "all",
+    source_id: "all",
+    assigned_to: "all",
+    date_from: "",
+    date_to: "",
+  });
   const [formOpen, setFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
   useEffect(() => {
     document.title = "CRM Leads - Apex Software";
     load();
+    loadFilters();
   }, []);
 
   async function load() {
@@ -56,7 +75,7 @@ export default function Leads() {
       setLoading(true);
       const { data, error } = await (supabase as any)
         .from("leads")
-        .select("*, crm_pipelines(name), crm_stages(name)")
+        .select("*, crm_pipelines(name), crm_stages(name), crm_lead_sources(name), profiles:assigned_to(full_name,display_name,email)")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -66,6 +85,20 @@ export default function Leads() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadFilters() {
+    const [pipelineResult, stageResult, sourceResult, userResult] = await Promise.all([
+      (supabase as any).from("crm_pipelines").select("*").order("name", { ascending: true }),
+      (supabase as any).from("crm_stages").select("*").order("position", { ascending: true }),
+      (supabase as any).from("crm_lead_sources").select("*").eq("active", true).order("name", { ascending: true }),
+      (supabase as any).from("profiles").select("id,full_name,display_name,email").eq("status", "approved").order("full_name", { ascending: true }),
+    ]);
+
+    if (!pipelineResult.error) setPipelines((pipelineResult.data as CRMPipeline[]) ?? []);
+    if (!stageResult.error) setStages((stageResult.data as CRMStage[]) ?? []);
+    if (!sourceResult.error) setSources((sourceResult.data as CRMLeadSource[]) ?? []);
+    if (!userResult.error) setUsers((userResult.data as any[]) ?? []);
   }
 
   async function handleSave(payload: Omit<LeadFormValue, "id">) {
@@ -125,16 +158,24 @@ export default function Leads() {
     if (!query) return leads;
 
     return leads.filter((lead) => (
-      lead.lead_no.toLowerCase().includes(query) ||
-      lead.company_name.toLowerCase().includes(query) ||
-      (lead.contact_person ?? "").toLowerCase().includes(query) ||
-      (lead.phone ?? "").toLowerCase().includes(query) ||
-      (lead.email ?? "").toLowerCase().includes(query) ||
-      (lead.crm_pipelines?.name ?? "").toLowerCase().includes(query) ||
-      (lead.crm_stages?.name ?? "").toLowerCase().includes(query) ||
-      statusLabel(lead.status).toLowerCase().includes(query)
+      (!query ||
+        lead.lead_no.toLowerCase().includes(query) ||
+        lead.company_name.toLowerCase().includes(query) ||
+        (lead.contact_person ?? "").toLowerCase().includes(query) ||
+        (lead.phone ?? "").toLowerCase().includes(query)) &&
+      (filters.pipeline_id === "all" || lead.pipeline_id === filters.pipeline_id) &&
+      (filters.stage_id === "all" || lead.stage_id === filters.stage_id) &&
+      (filters.status === "all" || lead.status === filters.status) &&
+      (filters.source_id === "all" || lead.source_id === filters.source_id) &&
+      (filters.assigned_to === "all" || lead.assigned_to === filters.assigned_to) &&
+      (!filters.date_from || lead.created_at.slice(0, 10) >= filters.date_from) &&
+      (!filters.date_to || lead.created_at.slice(0, 10) <= filters.date_to)
     ));
-  }, [leads, search]);
+  }, [leads, search, filters]);
+
+  const filteredStages = filters.pipeline_id === "all"
+    ? stages
+    : stages.filter((stage) => stage.pipeline_id === filters.pipeline_id);
 
   return (
     <div className="space-y-6">
@@ -150,14 +191,59 @@ export default function Leads() {
         </Button>
       </div>
 
-      <div className="flex items-center max-w-md relative">
-        <Search className="h-4 w-4 text-muted-foreground absolute left-3" />
-        <Input
-          placeholder="Search leads..."
-          className="pl-9"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+      <div className="grid gap-3 lg:grid-cols-[1.5fr_repeat(5,1fr)]">
+        <div className="relative">
+          <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            placeholder="Search lead no, company, contact, phone..."
+            className="pl-9"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <Select value={filters.pipeline_id} onValueChange={(value) => setFilters({ ...filters, pipeline_id: value, stage_id: "all" })}>
+          <SelectTrigger><SelectValue placeholder="Pipeline" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Pipelines</SelectItem>
+            {pipelines.map((pipeline) => <SelectItem key={pipeline.id} value={pipeline.id}>{pipeline.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.stage_id} onValueChange={(value) => setFilters({ ...filters, stage_id: value })}>
+          <SelectTrigger><SelectValue placeholder="Stage" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Stages</SelectItem>
+            {filteredStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
+          <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="in_progress">In Progress</SelectItem>
+            <SelectItem value="won">Won</SelectItem>
+            <SelectItem value="lost">Lost</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filters.source_id} onValueChange={(value) => setFilters({ ...filters, source_id: value })}>
+          <SelectTrigger><SelectValue placeholder="Source" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            {sources.map((source) => <SelectItem key={source.id} value={source.id}>{source.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.assigned_to} onValueChange={(value) => setFilters({ ...filters, assigned_to: value })}>
+          <SelectTrigger><SelectValue placeholder="Assigned" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Users</SelectItem>
+            {users.map((profile) => (
+              <SelectItem key={profile.id} value={profile.id}>
+                {profile.full_name || profile.display_name || profile.email || profile.id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input type="date" value={filters.date_from} onChange={(event) => setFilters({ ...filters, date_from: event.target.value })} />
+        <Input type="date" value={filters.date_to} onChange={(event) => setFilters({ ...filters, date_to: event.target.value })} />
       </div>
 
       <Card className="overflow-hidden border border-border/50">
@@ -181,6 +267,7 @@ export default function Leads() {
                 <TableHead>Phone</TableHead>
                 <TableHead>Pipeline</TableHead>
                 <TableHead>Stage</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created At</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -188,13 +275,14 @@ export default function Leads() {
             </TableHeader>
             <TableBody>
               {filteredLeads.map((lead) => (
-                <TableRow key={lead.id}>
+                <TableRow key={lead.id} className="cursor-pointer" onClick={() => navigate(`/crm/leads/${lead.id}`)}>
                   <TableCell className="font-mono font-medium">{lead.lead_no}</TableCell>
                   <TableCell className="font-medium">{lead.company_name}</TableCell>
                   <TableCell>{lead.contact_person || "-"}</TableCell>
                   <TableCell>{lead.phone || "-"}</TableCell>
                   <TableCell>{lead.crm_pipelines?.name ?? "-"}</TableCell>
                   <TableCell>{lead.crm_stages?.name ?? "-"}</TableCell>
+                  <TableCell>{lead.crm_lead_sources?.name ?? "-"}</TableCell>
                   <TableCell>
                     <Badge variant={statusVariant(lead.status)}>
                       {statusLabel(lead.status)}
@@ -206,13 +294,20 @@ export default function Leads() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => { setEditingLead(lead); setFormOpen(true); }}
+                        onClick={(event) => { event.stopPropagation(); navigate(`/crm/leads/${lead.id}`); }}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(event) => { event.stopPropagation(); setEditingLead(lead); setFormOpen(true); }}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                          <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
@@ -225,7 +320,7 @@ export default function Leads() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => remove(lead)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            <AlertDialogAction onClick={(event) => { event.stopPropagation(); remove(lead); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                               Delete
                             </AlertDialogAction>
                           </AlertDialogFooter>
