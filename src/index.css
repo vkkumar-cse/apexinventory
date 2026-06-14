@@ -74,12 +74,26 @@
   }
   html {
     @apply dark;
+    max-width: 100%;
+    overflow-x: hidden;
   }
   body {
     @apply bg-background text-foreground antialiased;
+    max-width: 100%;
+    overflow-x: hidden;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     background-image: var(--gradient-glow);
     background-attachment: fixed;
+  }
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+  img, video, canvas, svg {
+    max-width: 100%;
   }
 }
 
@@ -94,6 +108,13 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }
 

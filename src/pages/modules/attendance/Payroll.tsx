@@ -847,7 +847,41 @@ export default function Payroll() {
                   {rowsToShow.length === 0 ? (
                     <div className="text-center py-16 border border-dashed border-slate-800 rounded-xl text-slate-500">{isAdmin ? "Generate payroll for this month." : "Payroll has not been generated for this month yet."}</div>
                   ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-800">
+                    <>
+                    <div className="space-y-3 md:hidden">
+                      {rowsToShow.map((row) => {
+                        const profile = profileById.get(row.employee_id);
+                        return (
+                          <div key={row.id} className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4 text-sm">
+                            <div className="flex min-w-0 items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="break-words font-semibold text-slate-200">{profile?.full_name || profile?.display_name || profile?.email || "Employee"}</p>
+                                <p className="mt-0.5 break-all font-mono text-xs text-slate-500">{row.payslip_number || row.payroll_month}</p>
+                              </div>
+                              <Badge className="shrink-0 bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">{row.status}</Badge>
+                            </div>
+                            <div className="mt-3 grid gap-2 text-xs text-slate-300">
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Attendance</span><span>P {row.present_days} / A {row.absent_days} / H {row.half_days} / L {row.leave_days}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Late / Hours</span><span>Late {row.late_marks} / {formatDurationHours(row.total_working_hours)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Deductions</span><span>{money(row.absent_deductions + row.half_day_deductions + row.late_penalties)}</span></div>
+                              <div className="flex justify-between gap-3"><span className="text-slate-500">Overtime</span><span>{formatDurationHours(row.overtime_hours)} / {money(row.overtime_amount)}</span></div>
+                              <div className="flex justify-between gap-3 text-base"><span className="text-slate-500">Net Pay</span><span className="font-extrabold text-emerald-400">{money(row.monthly_payable)}</span></div>
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                              {isAdmin && row.status === "generated" && <Button size="sm" onClick={() => updatePayrollStatus(row, "approved")} className="min-h-11 w-full bg-indigo-600 hover:bg-indigo-700"><CheckCircle2 className="h-4 w-4 mr-1" />Approve</Button>}
+                              {isAdmin && row.status === "approved" && <Button size="sm" onClick={() => updatePayrollStatus(row, "paid")} className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700"><Banknote className="h-4 w-4 mr-1" />Paid</Button>}
+                              <Button size="sm" variant="outline" onClick={() => setSelectedPayslip(row)} className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"><FileText className="h-4 w-4 mr-1" />View</Button>
+                              <div className="grid grid-cols-2 gap-2">
+                                <Button size="sm" variant="outline" onClick={() => openPayslipPrint(row)} className="min-h-11 border-slate-700 text-slate-300 hover:bg-slate-800"><Printer className="h-4 w-4" /></Button>
+                                <Button size="sm" variant="outline" onClick={() => downloadPayslip(row)} className="min-h-11 border-slate-700 text-slate-300 hover:bg-slate-800"><Download className="h-4 w-4" /></Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="hidden rounded-xl border border-slate-800 md:block">
                       <table className="w-full text-sm text-left">
                         <thead className="bg-[#0B1528]/85 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-800">
                           <tr><th className="py-3 px-3">Employee</th><th className="py-3 px-3 text-center">Attendance</th><th className="py-3 px-3 text-right">Deductions</th><th className="py-3 px-3 text-right">Earnings</th><th className="py-3 px-3 text-right">Actions</th></tr>
@@ -888,6 +922,7 @@ export default function Payroll() {
                         </tbody>
                       </table>
                     </div>
+                    </>
                   )}
                 </CardContent>
               </Card>

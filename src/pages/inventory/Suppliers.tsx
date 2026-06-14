@@ -81,13 +81,13 @@ export default function Suppliers() {
         {isAdmin && (
           <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(empty); } }}>
             <DialogTrigger asChild>
-              <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New supplier</Button>
+              <Button className="w-full sm:w-auto" onClick={openNew}><Plus className="h-4 w-4 mr-2" />New supplier</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>{editing ? `Edit ${editing.name}` : "Add supplier"}</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="orders@vendor.com" /></div>
                   <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+91 …" /></div>
                 </div>

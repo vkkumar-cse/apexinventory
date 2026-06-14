@@ -107,9 +107,9 @@ export default function Transactions() {
   }, [items, fromDate, toDate, productSearch, typeFilter]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+    <div className="max-w-full space-y-6 overflow-x-hidden">
+      <div className="min-w-0">
+        <h1 className="break-words text-2xl font-bold tracking-tight sm:text-3xl">
           Transaction History
         </h1>
         <p className="text-muted-foreground mt-1">
@@ -163,10 +163,11 @@ export default function Transactions() {
           </select>
         </div>
 
-        <div className="flex items-end justify-end">
+        <div className="flex items-end justify-stretch lg:justify-end">
           <Button
             type="button"
             variant="secondary"
+            className="w-full lg:w-auto"
             onClick={() => {
               setFromDate("");
               setToDate("");
@@ -178,7 +179,51 @@ export default function Transactions() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-secondary/10">
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 md:hidden">
+          {filteredItems.length === 0 ? (
+            <div className="rounded-lg bg-slate-950/80 px-4 py-6 text-center text-sm text-muted-foreground">
+              No transactions match the selected filters.
+            </div>
+          ) : (
+            filteredItems.map((t, index) => {
+              const displayNumber = t.transaction_number?.trim() || `TXN-${index + 1}`;
+
+              return (
+                <div key={t.id} className="rounded-lg border border-border/60 bg-slate-950/80 p-4">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-all font-mono text-xs text-primary">{displayNumber}</p>
+                      <p className="mt-1 break-words font-semibold text-foreground">{t.products?.name ?? "Unknown Product"}</p>
+                    </div>
+                    <span className="shrink-0 rounded-md border border-border px-2 py-1 text-xs capitalize text-muted-foreground">
+                      {t.type}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-muted-foreground">
+                    <div className="flex justify-between gap-3">
+                      <span>Date</span>
+                      <span className="text-right text-foreground">{new Date(t.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Quantity</span>
+                      <span className="font-mono text-foreground">{t.quantity}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Created By</span>
+                      <span className="break-words text-right text-foreground">{t.created_by_name}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Created At</span>
+                      <span className="text-right text-foreground">{new Date(t.created_at).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden md:block">
           <table className="min-w-full border-collapse">
             <thead className="bg-white">
               <tr>

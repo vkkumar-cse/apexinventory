@@ -808,7 +808,7 @@ function PrintPreview({
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent
-        className="max-w-[850px] p-0 border-none bg-white shadow-lg overflow-hidden"
+        className="w-[calc(100vw-1rem)] max-w-[850px] p-0 border-none bg-white shadow-lg overflow-hidden"
         style={{ width: "min(850px, 96vw)", maxHeight: "90vh", boxSizing: "border-box" }}
       >
         <style>{`

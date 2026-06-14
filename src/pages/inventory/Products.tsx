@@ -307,14 +307,14 @@ setRequestId(null);    setParams({});
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Products</h1>
+    <div className="max-w-full space-y-6 overflow-x-hidden">
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl font-bold tracking-tight sm:text-3xl">Products</h1>
           <p className="text-muted-foreground mt-1">{items.length} items in inventory</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={exportExcel} disabled={items.length === 0}>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={exportExcel} disabled={items.length === 0}>
             <FileSpreadsheet className="h-4 w-4 mr-2" />Export
           </Button>
           {isAdmin && (
@@ -327,6 +327,7 @@ setRequestId(null);    setParams({});
       onChange={importExcel}
     />
     <Button
+      className="w-full sm:w-auto"
       variant="outline"
       onClick={() => document.getElementById("excel-import")?.click()}
     >
@@ -342,18 +343,18 @@ setRequestId(null);    setParams({});
   setForm(empty);
   setSupplierSearch("");
 } }}>
-              <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New product</Button></DialogTrigger>
+              <DialogTrigger asChild><Button className="col-span-2 w-full sm:col-span-1 sm:w-auto"><Plus className="h-4 w-4 mr-2" />New product</Button></DialogTrigger>
 <DialogContent
   className="max-w-lg max-h-[90vh] overflow-y-auto"
   onInteractOutside={(e) => e.preventDefault()}
 >                <DialogHeader><DialogTitle>{requestId ? "Approve & create product" : "Add product"}</DialogTitle></DialogHeader>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-                  <div className="col-span-2 space-y-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Part No. <span className="text-muted-foreground font-normal">(e.g. opt01)</span></Label>
                     <Input value={form.part_no} onChange={e => setForm({ ...form, part_no: e.target.value })} placeholder="Optional manufacturer / shop part number" />
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Labels <span className="text-muted-foreground font-normal">(can be both)</span></Label>
                     <div className="flex gap-2">
                       {(["OPTO", "NPD"] as const).map(l => (
@@ -361,15 +362,15 @@ setRequestId(null);    setParams({});
                       ))}
                     </div>
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Specifications</Label>
                     <Textarea rows={2} value={form.specifications} onChange={e => setForm({ ...form, specifications: e.target.value })} placeholder="e.g. 25 watt, M6 × 20mm" />
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Description</Label>
                     <Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
                     <Input list="product-types" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} placeholder="spare, lens, instrument…" />
                     <datalist id="product-types">
@@ -378,7 +379,7 @@ setRequestId(null);    setParams({});
                       ))}
                     </datalist>
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label>Sub-category</Label>
                     <SearchSelect
                       placeholder="Search sub-category…"
@@ -387,7 +388,7 @@ setRequestId(null);    setParams({});
                       options={subcats.map(c => ({ value: c.id, label: `${c.parent_name} › ${c.name}` }))}
                     />
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
   <Label>
     Suppliers{" "}
     <span className="text-muted-foreground font-normal">
@@ -437,8 +438,8 @@ setRequestId(null);    setParams({});
                   <div className="space-y-2"><Label>Selling price (₹)</Label><Input type="number" min={0} step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
                   <div className="space-y-2"><Label>Initial stock</Label><Input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
                   <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
-                  <div className="col-span-2 space-y-2"><Label>Location</Label><Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Rack-1, Loft-2" /></div>
-                  <Button className="col-span-2" onClick={save}>{requestId ? "Approve & create" : "Create"}</Button>
+                  <div className="space-y-2 sm:col-span-2"><Label>Location</Label><Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Rack-1, Loft-2" /></div>
+                  <Button className="sm:col-span-2" onClick={save}>{requestId ? "Approve & create" : "Create"}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -446,33 +447,33 @@ setRequestId(null);    setParams({});
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input className="pl-9" placeholder="Search by name, Part No., or specs…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
-        <div className="flex gap-1 bg-secondary/40 p-1 rounded-md">
+        <div className="flex w-full gap-1 rounded-md bg-secondary/40 p-1 sm:w-auto">
           {(["all", "OPTO", "NPD"] as const).map(l => (
-            <Button key={l} size="sm" variant={labelFilter === l ? "default" : "ghost"} className="h-7 px-3" onClick={() => setLabelFilter(l)}>{l === "all" ? "All" : l}</Button>
+            <Button key={l} size="sm" variant={labelFilter === l ? "default" : "ghost"} className="h-8 flex-1 px-3 sm:flex-none" onClick={() => setLabelFilter(l)}>{l === "all" ? "All" : l}</Button>
           ))}
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map(p => (
-          <Link key={p.id} to={`/inventory/product/${p.id}`}>
-            <Card className="p-5 hover:border-primary/50 hover:shadow-glow transition h-full">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary grid place-items-center"><Package className="h-5 w-5" /></div>
-                  <span className="text-xs font-mono px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20">{p.part_no ?? `#${p.code}`}</span>
+          <Link key={p.id} to={`/inventory/product/${p.id}`} className="min-w-0">
+            <Card className="h-full min-w-0 p-4 transition hover:border-primary/50 hover:shadow-glow sm:p-5">
+              <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Package className="h-5 w-5" /></div>
+                  <span className="min-w-0 break-all rounded border border-primary/20 bg-primary/10 px-2 py-1 font-mono text-xs text-primary">{p.part_no ?? `#${p.code}`}</span>
                 </div>
                 <StockBadge stock={p.stock} reorder={p.reorder_level} />
               </div>
-              <p className="font-semibold truncate">{p.name}</p>
-              {p.specifications && <p className="text-xs text-muted-foreground truncate mt-0.5">{p.specifications}</p>}
-              <div className="flex gap-1 mt-1">{(p.labels ?? []).map(l => <Badge key={l} variant="outline" className="text-[10px]">{l}</Badge>)}</div>
-              <div className="flex items-baseline gap-2 mt-1">
+              <p className="break-words font-semibold">{p.name}</p>
+              {p.specifications && <p className="mt-0.5 break-words text-xs text-muted-foreground">{p.specifications}</p>}
+              <div className="mt-1 flex flex-wrap gap-1">{(p.labels ?? []).map(l => <Badge key={l} variant="outline" className="text-[10px]">{l}</Badge>)}</div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-2">
                 <span className="text-2xl font-bold font-mono">{p.stock}</span>
                 <span className="text-xs text-muted-foreground">in stock · reorder {p.reorder_level}</span>
               </div>
@@ -482,19 +483,19 @@ setRequestId(null);    setParams({});
                 )}
                 <div className="px-2 py-1 rounded bg-secondary/50"><p className="text-muted-foreground">Sell</p><p className="font-mono font-semibold text-success">₹{Number(p.selling_price ?? 0).toFixed(2)}</p></div>
               </div>
-              <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground flex-wrap">
+              <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="px-1.5 py-0.5 rounded bg-secondary uppercase tracking-wider">{p.type}</span>
                 {p.categories?.name && <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">{p.categories.name}</span>}
                 {p.location && <span>📍 {p.location}</span>}
 {productSupplierMap[p.id]?.length > 0 && (
-  <span className="truncate">
+  <span className="max-w-full break-words">
     · {productSupplierMap[p.id].join(", ")}
   </span>
 )}              </div>
             </Card>
           </Link>
         ))}
-        {filtered.length === 0 && <Card className="p-12 col-span-full text-center text-muted-foreground">No products found.</Card>}
+        {filtered.length === 0 && <Card className="col-span-full p-8 text-center text-muted-foreground sm:p-12">No products found.</Card>}
       </div>
     </div>
   );

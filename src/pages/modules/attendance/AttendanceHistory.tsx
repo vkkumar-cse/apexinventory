@@ -265,7 +265,7 @@ export default function AttendanceHistory() {
         </Button>
       </div>
 
-      <div className="relative z-10 bg-[#13223D]/40 border border-slate-800/80 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
+      <div className="relative z-10 rounded-2xl border border-slate-800/80 bg-[#13223D]/40 p-4 shadow-2xl backdrop-blur-sm sm:p-6">
         {loading ? (
           <div className="flex justify-center items-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -276,7 +276,60 @@ export default function AttendanceHistory() {
             <p className="text-slate-400 font-medium">No attendance records found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+          <>
+          <div className="space-y-3 md:hidden">
+            {attendance.map((record) => {
+              const profile = profilesById.get(record.profile_id);
+              const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Employee";
+              const employeeCode = profile?.employee_code || "";
+              const sessionHours = getSessionHours(record);
+
+              return (
+                <div key={record.id} className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4 text-sm">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold text-white">{employeeName}</p>
+                      {employeeCode && <p className="mt-0.5 break-all font-mono text-[11px] text-slate-500">{employeeCode}</p>}
+                    </div>
+                    <div className="shrink-0">{getStatusBadge(record.status)}</div>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-slate-300">
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Date</span><span className="text-right">{formatDate(record.attendance_date)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Site</span><span className="break-words text-right">{record.site_name_snapshot || "-"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Check In</span><span className="text-right font-mono">{formatISTTime(record.check_in)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Check Out</span><span className="text-right font-mono">{formatISTTime(record.check_out)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Hours</span><span className="font-mono">{sessionHours !== null ? formatDurationHours(sessionHours) : "-"}</span></div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Verification</span>
+                      <span className={record.face_verified ? "text-emerald-400" : "text-slate-500"}>
+                        {record.face_verified ? `Face ${record.face_match_score !== null && record.face_match_score !== undefined ? Math.round(record.face_match_score * 100) + "%" : "Verified"}` : "Face Pending"}
+                      </span>
+                    </div>
+                    {record.check_in_latitude !== null && record.check_in_longitude !== null && (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-500">GPS</span>
+                        <span className="break-all text-right font-mono text-xs text-slate-500">{record.check_in_latitude.toFixed(4)}, {record.check_in_longitude.toFixed(4)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => deleteAttendance(record.id)}
+                      disabled={deletingId === record.id}
+                      className="mt-3 min-h-11 w-full border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-white"
+                    >
+                      {deletingId === record.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden rounded-xl border border-slate-800/80 md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="text-left text-slate-400 border-b border-slate-800 bg-[#0B1528]/80 text-xs font-semibold uppercase tracking-wider">
@@ -353,6 +406,7 @@ export default function AttendanceHistory() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>

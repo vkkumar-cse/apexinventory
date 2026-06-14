@@ -1155,7 +1155,7 @@ const formatISTTime = (time: string | null) => {
       </div>
 
       {/* Today's Attendance History Section */}
-      <div className="bg-[#13223D]/40 border border-slate-800/80 rounded-2xl p-6 shadow-2xl backdrop-blur-sm relative z-10">
+      <div className="bg-[#13223D]/40 border border-slate-800/80 rounded-2xl p-4 sm:p-6 shadow-2xl backdrop-blur-sm relative z-10">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">
@@ -1176,7 +1176,70 @@ const formatISTTime = (time: string | null) => {
             <p className="text-xs text-slate-600 mt-1">Use Mark Attendance above to record your check-in.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+          <>
+          <div className="space-y-3 md:hidden">
+            {todayAttendance.map((record) => {
+              const profile = profiles.find((item) => item.id === record.profile_id);
+              const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Profile";
+              const employeeCode = profile?.employee_code || "";
+              const sessionHours = getSessionHours(record);
+
+              return (
+                <div key={record.id} className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4 text-sm">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold text-white">{employeeName}</p>
+                      {employeeCode && <p className="mt-0.5 break-all font-mono text-[11px] text-slate-500">{employeeCode}</p>}
+                    </div>
+                    <div className="shrink-0">{getStatusBadge(record.status)}</div>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-slate-300">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Site</span>
+                      <span className="break-words text-right font-medium">{record.site_name_snapshot}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Check In</span>
+                      <span className="text-right">{formatISTTime(record.check_in)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Check Out</span>
+                      <span className="text-right">{record.check_out ? formatISTTime(record.check_out) : "Pending check-out"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Session Hours</span>
+                      <span className="font-mono font-semibold text-slate-100">{sessionHours !== null ? formatDurationHours(sessionHours) : "-"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Face</span>
+                      <span className={record.face_verified ? "text-emerald-400" : "text-slate-500"}>
+                        {record.face_verified ? `Verified${record.face_match_score !== null && record.face_match_score !== undefined ? ` (${Math.round(record.face_match_score * 100)}%)` : ""}` : "Not Verified"}
+                      </span>
+                    </div>
+                    {record.check_in_latitude && record.check_in_longitude && (
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-500">GPS</span>
+                        <span className="break-all text-right font-mono text-xs text-slate-400">
+                          {record.check_in_latitude.toFixed(4)}, {record.check_in_longitude.toFixed(4)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {DEMO_MODE && (
+                    <button
+                      onClick={() => deleteAttendance(record.id)}
+                      className="mt-3 min-h-11 w-full rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-400 transition-all duration-200 hover:bg-red-500 hover:text-white"
+                      title="Delete attendance record"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden rounded-xl border border-slate-800/80 md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="text-left text-slate-400 border-b border-slate-800 bg-[#0B1528]/80 text-xs font-semibold uppercase tracking-wider">
@@ -1274,13 +1337,14 @@ const formatISTTime = (time: string | null) => {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 
       {/* Face Verification Modal */}
       {showFaceCamera && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0B1528] border border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0B1528] p-4 shadow-2xl sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <Camera className="w-5 h-5 text-blue-400" />
@@ -1320,10 +1384,10 @@ const formatISTTime = (time: string | null) => {
                 <p className="text-sm text-slate-400">
                   Keep one face centered. Attendance is saved only after a live match succeeds.
                 </p>
-                <div className="flex gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     onClick={verifyFaceAndSaveAttendance}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                    className="min-h-11 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold"
                     disabled={isVerifyingFace}
                   >
                     {isVerifyingFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
@@ -1332,7 +1396,7 @@ const formatISTTime = (time: string | null) => {
                   <Button
                     onClick={resetFaceCamera}
                     variant="outline"
-                    className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
+                    className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"
                     disabled={isVerifyingFace}
                   >
                     Cancel

@@ -105,21 +105,21 @@ export default function Requests() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Product Requests</h1>
+    <div className="max-w-full space-y-6 overflow-x-hidden">
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl font-bold tracking-tight sm:text-3xl">Product Requests</h1>
           <p className="text-muted-foreground mt-1">{isAdmin ? "Review and approve worker requests." : "Request a new product to be added by an admin."}</p>
         </div>
         {!isAdmin && (
   <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />New request</Button></DialogTrigger>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />New request</Button></DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Request a product</DialogTitle></DialogHeader>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-              <div className="col-span-2 space-y-2"><Label>Part No.</Label><Input value={form.part_no} onChange={e => setForm({ ...form, part_no: e.target.value })} placeholder="e.g. opt01" /></div>
-              <div className="col-span-2 space-y-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+              <div className="space-y-2 sm:col-span-2"><Label>Part No.</Label><Input value={form.part_no} onChange={e => setForm({ ...form, part_no: e.target.value })} placeholder="e.g. opt01" /></div>
+              <div className="space-y-2 sm:col-span-2">
                 <Label>Labels</Label>
                 <div className="flex gap-2">
                   {(["OPTO", "NPD"] as const).map(l => (
@@ -142,19 +142,19 @@ export default function Requests() {
                 <Label>Sub-category</Label>
                 <SearchSelect placeholder="Search sub-category…" value={form.category_id} onChange={v => setForm({ ...form, category_id: v })} options={cats.map(c => ({ value: c.id, label: c.name }))} />
               </div>
-              <div className="col-span-2 space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label>Supplier</Label>
                 <SearchSelect placeholder="Search supplier…" value={form.supplier_id} onChange={v => setForm({ ...form, supplier_id: v })} options={sups.map(s => ({ value: s.id, label: s.name }))} />
               </div>
-              <div className="col-span-2 space-y-2"><Label>Specifications</Label><Textarea rows={2} value={form.specifications} onChange={e => setForm({ ...form, specifications: e.target.value })} /></div>
-              <div className="col-span-2 space-y-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
+              <div className="space-y-2 sm:col-span-2"><Label>Specifications</Label><Textarea rows={2} value={form.specifications} onChange={e => setForm({ ...form, specifications: e.target.value })} /></div>
+              <div className="space-y-2 sm:col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
               <div className="space-y-2"><Label>Initial stock</Label><Input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></div>
               <div className="space-y-2"><Label>Reorder level</Label><Input type="number" value={form.reorder_level} onChange={e => setForm({ ...form, reorder_level: e.target.value })} /></div>
               <div className="space-y-2"><Label>Purchase ₹</Label><Input type="number" step="0.01" value={form.purchase_price} onChange={e => setForm({ ...form, purchase_price: e.target.value })} /></div>
               <div className="space-y-2"><Label>Selling ₹</Label><Input type="number" step="0.01" value={form.selling_price} onChange={e => setForm({ ...form, selling_price: e.target.value })} /></div>
-              <div className="col-span-2 space-y-2"><Label>Location</Label><Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /></div>
-              <div className="col-span-2 space-y-2"><Label>Note for admin</Label><Textarea rows={2} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
-              <Button className="col-span-2" onClick={submit}>Submit request</Button>
+              <div className="space-y-2 sm:col-span-2"><Label>Location</Label><Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /></div>
+              <div className="space-y-2 sm:col-span-2"><Label>Note for admin</Label><Textarea rows={2} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
+              <Button className="min-h-11 sm:col-span-2" onClick={submit}>Submit request</Button>
             </div>
           </DialogContent>
         </Dialog>

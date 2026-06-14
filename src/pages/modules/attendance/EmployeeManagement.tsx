@@ -397,10 +397,10 @@ export default function EmployeeManagement() {
   const faceStatus = (profile: EmployeeProfile) => profile.face_registered_at ? "Verified Ready" : "Not Set";
 
   return (
-    <div className="p-4 md:p-8 space-y-6 text-white min-h-[calc(100vh-100px)] bg-[#0B1528] rounded-2xl border border-slate-800 shadow-2xl">
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-          <UsersIcon className="h-8 w-8 text-blue-500" />
+    <div className="min-h-[calc(100vh-100px)] max-w-full space-y-6 overflow-x-hidden rounded-2xl border border-slate-800 bg-[#0B1528] p-4 text-white shadow-2xl md:p-8">
+      <div className="min-w-0">
+        <h1 className="flex items-center gap-2 break-words text-2xl font-extrabold tracking-tight sm:text-3xl">
+          <UsersIcon className="h-7 w-7 shrink-0 text-blue-500 sm:h-8 sm:w-8" />
           Employee Management
         </h1>
         <p className="text-slate-400 mt-1">Manage attendance employee details and face registration.</p>
@@ -421,105 +421,206 @@ export default function EmployeeManagement() {
               <p className="text-slate-500 font-medium">No user profiles found.</p>
             </div>
           ) : (
-            <table className="w-full table-fixed text-left text-sm">
-              <thead className="bg-[#0B1528]/85 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-800">
-                <tr>
-                  <th className="w-[22%] py-3 px-3">Employee</th>
-                  <th className="w-[18%] py-3 px-3 hidden md:table-cell">Contact</th>
-                  <th className="w-[16%] py-3 px-3 hidden lg:table-cell">Department</th>
-                  <th className="w-[12%] py-3 px-3">Role</th>
-                  <th className="w-[16%] py-3 px-3 hidden xl:table-cell">Assigned Sites</th>
-                  <th className="w-[10%] py-3 px-3">Face Status</th>
-                  <th className="w-[14%] py-3 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
+            <>
+              <div className="space-y-4 xl:hidden">
                 {profiles.map((profile) => (
-                  <tr key={profile.id} className="hover:bg-slate-800/40 transition-colors align-top">
-                    <td className="py-4 px-3">
+                  <div key={profile.id} className="rounded-xl border border-slate-800 bg-[#0B1528]/80 p-4 shadow-sm">
+                    <div className="min-w-0 space-y-4">
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-100 truncate">{profile.full_name || profile.display_name || "New User"}</p>
-                        <p className="text-xs text-slate-400 truncate">{profile.employee_code || "No employee code"}</p>
-                        <div className="md:hidden mt-2 space-y-1 text-xs text-slate-400">
-                          {profile.email && <p className="truncate">{profile.email}</p>}
-                          {profile.phone && <p>{profile.phone}</p>}
-                        </div>
-                        <div className="lg:hidden mt-2 text-xs text-slate-400 truncate">
-                          {[profile.department, profile.designation].filter(Boolean).join(" / ") || "No department"}
-                        </div>
+                        <p className="break-words text-lg font-bold uppercase leading-snug text-slate-100">
+                          {profile.full_name || profile.display_name || "New User"}
+                        </p>
+                        <p className="mt-1 break-all text-sm text-slate-400">
+                          {profile.email || "No email"}
+                        </p>
+                        <p className="mt-1 break-words text-xs text-slate-500">
+                          {profile.employee_code || "No employee code"}
+                        </p>
                       </div>
-                    </td>
-                    <td className="py-4 px-3 hidden md:table-cell">
-                      <div className="space-y-1 text-xs text-slate-350 min-w-0">
-                        {profile.email && (
-                          <div className="flex items-center gap-1 min-w-0">
-                            <Mail className="h-3 w-3 shrink-0 text-slate-500" />
-                            <span className="truncate">{profile.email}</span>
+
+                      <div className="grid gap-3 rounded-lg border border-slate-800/80 bg-slate-950/30 p-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-slate-400">Role</span>
+                          <span className="flex items-center gap-1.5 font-semibold capitalize text-slate-100">
+                            {profile.role === "admin" ? <ShieldCheck className="h-4 w-4 text-blue-400" /> : <UserSoloIcon className="h-4 w-4 text-slate-400" />}
+                            {profile.role}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-slate-400">Status</span>
+                          <Badge className={`text-[11px] font-bold ${profile.is_active ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                            {profile.is_active ? "ACTIVE" : "INACTIVE"}
+                          </Badge>
+                        </div>
+                        <div className="min-w-0">
+                          <span className="block text-slate-400">Department</span>
+                          <span className="mt-1 block break-words font-medium text-slate-200">
+                            {[profile.department, profile.designation].filter(Boolean).join(" / ") || "No department"}
+                          </span>
+                        </div>
+                        {(profile.phone || profile.email) && (
+                          <div className="space-y-1 text-xs text-slate-400">
+                            {profile.phone && (
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Phone className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                                <span className="break-words">{profile.phone}</span>
+                              </div>
+                            )}
+                            {profile.email && (
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Mail className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                                <span className="break-all">{profile.email}</span>
+                              </div>
+                            )}
                           </div>
                         )}
-                        {profile.phone && (
-                          <div className="flex items-center gap-1">
-                            <Phone className="h-3 w-3 shrink-0 text-slate-500" />
-                            <span>{profile.phone}</span>
-                          </div>
-                        )}
-                        {!profile.email && !profile.phone && <span className="text-slate-500">No contact</span>}
                       </div>
-                    </td>
-                    <td className="py-4 px-3 hidden lg:table-cell">
-                      <p className="font-medium text-slate-200 truncate">{profile.department || "No department"}</p>
-                      <p className="text-xs text-slate-400 truncate">{profile.designation || "No designation"}</p>
-                    </td>
-                    <td className="py-4 px-3">
-                      <div className="flex items-center gap-1">
-                        {profile.role === "admin" ? <ShieldCheck className="h-3.5 w-3.5 text-blue-400" /> : <UserSoloIcon className="h-3.5 w-3.5 text-slate-400" />}
-                        <span className="capitalize font-medium">{profile.role}</span>
+
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Face</p>
+                        <Badge className={`w-fit whitespace-normal text-[11px] font-bold ${profile.face_registered_at ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                          {faceStatus(profile)}
+                        </Badge>
                       </div>
-                      <Badge className={`mt-2 text-[10px] font-bold ${profile.is_active ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
-                        {profile.is_active ? "ACTIVE" : "INACTIVE"}
-                      </Badge>
-                    </td>
-                    <td className="py-4 px-3 hidden xl:table-cell">
-                      {profile.assigned_sites.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {profile.assigned_sites.slice(0, 2).map((site) => (
-                            <Badge key={site.id} className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                              {site.site_name}
+
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Assigned Sites</p>
+                        <div className="flex flex-wrap gap-2">
+                          {profile.assigned_sites.length > 0 ? (
+                            profile.assigned_sites.map((site) => (
+                              <Badge key={site.id} className="max-w-full break-words bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                                {site.site_name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Badge className="max-w-full break-words bg-slate-800 text-slate-400 border border-slate-700">
+                              Main Office default
                             </Badge>
-                          ))}
-                          {profile.assigned_sites.length > 2 && (
-                            <Badge className="bg-slate-800 text-slate-400 border border-slate-700">+{profile.assigned_sites.length - 2}</Badge>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-slate-500">Main Office default</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-3">
-                      <Badge className={`text-[10px] font-bold whitespace-normal ${profile.face_registered_at ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
-                        {faceStatus(profile)}
-                      </Badge>
-                    </td>
-                    <td className="py-4 px-3">
-                      <div className="flex flex-col items-end gap-2">
-                        <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => handleEditProfile(profile)}>
-                          <Edit3 className="h-3.5 w-3.5 mr-1" />
+                      </div>
+
+                      <div className="grid gap-2 pt-1">
+                        <Button variant="outline" className="min-h-11 w-full justify-center border-slate-800 text-slate-300 hover:bg-slate-800" onClick={() => handleEditProfile(profile)}>
+                          <Edit3 className="mr-2 h-4 w-4" />
                           Edit
                         </Button>
-                        <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => openFaceRegistration(profile)}>
-                          <Camera className="h-3.5 w-3.5 mr-1" />
-                          {profile.face_registered_at ? "Update Face" : "Register"}
+                        <Button variant="outline" className="min-h-11 w-full justify-center border-slate-800 text-slate-300 hover:bg-slate-800" onClick={() => openFaceRegistration(profile)}>
+                          <Camera className="mr-2 h-4 w-4" />
+                          {profile.face_registered_at ? "Update Face" : "Register Face"}
                         </Button>
-                        <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => openAssignSites(profile)}>
-                          <MapPin className="h-3.5 w-3.5 mr-1" />
-                          Assign
+                        <Button variant="outline" className="min-h-11 w-full justify-center border-slate-800 text-slate-300 hover:bg-slate-800" onClick={() => openAssignSites(profile)}>
+                          <MapPin className="mr-2 h-4 w-4" />
+                          Assign Sites
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              <div className="hidden xl:block">
+                <table className="w-full table-fixed text-left text-sm">
+                  <thead className="bg-[#0B1528]/85 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-800">
+                    <tr>
+                      <th className="w-[22%] py-3 px-3">Employee</th>
+                      <th className="w-[18%] py-3 px-3 hidden md:table-cell">Contact</th>
+                      <th className="w-[16%] py-3 px-3 hidden lg:table-cell">Department</th>
+                      <th className="w-[12%] py-3 px-3">Role</th>
+                      <th className="w-[16%] py-3 px-3 hidden xl:table-cell">Assigned Sites</th>
+                      <th className="w-[10%] py-3 px-3">Face Status</th>
+                      <th className="w-[14%] py-3 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {profiles.map((profile) => (
+                      <tr key={profile.id} className="hover:bg-slate-800/40 transition-colors align-top">
+                        <td className="py-4 px-3">
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-100 truncate">{profile.full_name || profile.display_name || "New User"}</p>
+                            <p className="text-xs text-slate-400 truncate">{profile.employee_code || "No employee code"}</p>
+                            <div className="md:hidden mt-2 space-y-1 text-xs text-slate-400">
+                              {profile.email && <p className="truncate">{profile.email}</p>}
+                              {profile.phone && <p>{profile.phone}</p>}
+                            </div>
+                            <div className="lg:hidden mt-2 text-xs text-slate-400 truncate">
+                              {[profile.department, profile.designation].filter(Boolean).join(" / ") || "No department"}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-3 hidden md:table-cell">
+                          <div className="space-y-1 text-xs text-slate-350 min-w-0">
+                            {profile.email && (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <Mail className="h-3 w-3 shrink-0 text-slate-500" />
+                                <span className="truncate">{profile.email}</span>
+                              </div>
+                            )}
+                            {profile.phone && (
+                              <div className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 shrink-0 text-slate-500" />
+                                <span>{profile.phone}</span>
+                              </div>
+                            )}
+                            {!profile.email && !profile.phone && <span className="text-slate-500">No contact</span>}
+                          </div>
+                        </td>
+                        <td className="py-4 px-3 hidden lg:table-cell">
+                          <p className="font-medium text-slate-200 truncate">{profile.department || "No department"}</p>
+                          <p className="text-xs text-slate-400 truncate">{profile.designation || "No designation"}</p>
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="flex items-center gap-1">
+                            {profile.role === "admin" ? <ShieldCheck className="h-3.5 w-3.5 text-blue-400" /> : <UserSoloIcon className="h-3.5 w-3.5 text-slate-400" />}
+                            <span className="capitalize font-medium">{profile.role}</span>
+                          </div>
+                          <Badge className={`mt-2 text-[10px] font-bold ${profile.is_active ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                            {profile.is_active ? "ACTIVE" : "INACTIVE"}
+                          </Badge>
+                        </td>
+                        <td className="py-4 px-3 hidden xl:table-cell">
+                          {profile.assigned_sites.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {profile.assigned_sites.slice(0, 2).map((site) => (
+                                <Badge key={site.id} className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                                  {site.site_name}
+                                </Badge>
+                              ))}
+                              {profile.assigned_sites.length > 2 && (
+                                <Badge className="bg-slate-800 text-slate-400 border border-slate-700">+{profile.assigned_sites.length - 2}</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-500">Main Office default</span>
+                          )}
+                        </td>
+                        <td className="py-4 px-3">
+                          <Badge className={`text-[10px] font-bold whitespace-normal ${profile.face_registered_at ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-800 text-slate-400 border border-slate-700"}`}>
+                            {faceStatus(profile)}
+                          </Badge>
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="flex flex-col items-end gap-2">
+                            <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => handleEditProfile(profile)}>
+                              <Edit3 className="h-3.5 w-3.5 mr-1" />
+                              Edit
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => openFaceRegistration(profile)}>
+                              <Camera className="h-3.5 w-3.5 mr-1" />
+                              {profile.face_registered_at ? "Update Face" : "Register"}
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => openAssignSites(profile)}>
+                              <MapPin className="h-3.5 w-3.5 mr-1" />
+                              Assign
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -571,11 +672,11 @@ export default function EmployeeManagement() {
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" className="border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800" onClick={closeEdit} disabled={isSubmitting}>
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" className="min-h-11 w-full border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 sm:w-auto" onClick={closeEdit} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button onClick={updateProfile} disabled={isSubmitting} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold">
+            <Button onClick={updateProfile} disabled={isSubmitting} className="min-h-11 w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold sm:w-auto">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
             </Button>
           </div>
@@ -623,11 +724,11 @@ export default function EmployeeManagement() {
               })}
             </div>
           </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" className="border-slate-800 text-slate-300 hover:bg-slate-800" onClick={() => setAssignOpen(false)} disabled={isSubmitting}>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button variant="outline" className="min-h-11 w-full border-slate-800 text-slate-300 hover:bg-slate-800 sm:w-auto" onClick={() => setAssignOpen(false)} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button onClick={saveSiteAssignments} disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+            <Button onClick={saveSiteAssignments} disabled={isSubmitting} className="min-h-11 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold sm:w-auto">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Assignments"}
             </Button>
           </div>
@@ -635,8 +736,8 @@ export default function EmployeeManagement() {
       </Dialog>
 
       {showFaceRegistration && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0B1528] border border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0B1528] p-4 shadow-2xl sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <Camera className="w-5 h-5 text-blue-400" />
@@ -654,14 +755,14 @@ export default function EmployeeManagement() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-5 gap-2 pb-2">
+                <div className="grid grid-cols-5 gap-1.5 pb-2 sm:gap-2">
                   {REGISTRATION_STEPS.map((step, idx) => {
                     const isCaptured = idx < capturedDescriptors.length;
                     const isCurrent = idx === registrationStep;
                     return (
                       <div
                         key={step.label}
-                        className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all ${
+                        className={`flex flex-col items-center rounded-lg border p-1.5 text-center transition-all sm:p-2 ${
                           isCaptured
                             ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                             : isCurrent
@@ -670,7 +771,7 @@ export default function EmployeeManagement() {
                         }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">{idx + 1}</span>
-                        <span className="text-[9px] mt-0.5 leading-tight font-medium">{step.label}</span>
+                        <span className="mt-0.5 hidden text-[9px] font-medium leading-tight min-[390px]:block">{step.label}</span>
                       </div>
                     );
                   })}
@@ -703,24 +804,24 @@ export default function EmployeeManagement() {
                 <p className="text-[11px] text-slate-400 text-center">
                   Only numeric facial features are stored. Face images are not stored.
                 </p>
-                <div className="flex flex-wrap gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {registrationStep < REGISTRATION_STEPS.length ? (
-                    <Button onClick={captureFaceSample} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold" disabled={isRegisteringFace}>
+                    <Button onClick={captureFaceSample} className="min-h-11 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold" disabled={isRegisteringFace}>
                       {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
                       Capture
                     </Button>
                   ) : (
-                    <Button onClick={registerFaceDescriptor} className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold" disabled={isRegisteringFace}>
+                    <Button onClick={registerFaceDescriptor} className="min-h-11 w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold" disabled={isRegisteringFace}>
                       {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
                       Save Face Profile
                     </Button>
                   )}
                   {capturedDescriptors.length > 0 && (
-                    <Button onClick={resetFaceCapture} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
+                    <Button onClick={resetFaceCapture} variant="outline" className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
                       Reset
                     </Button>
                   )}
-                  <Button onClick={() => setShowFaceRegistration(false)} variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
+                  <Button onClick={() => setShowFaceRegistration(false)} variant="outline" className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
                     Cancel
                   </Button>
                 </div>

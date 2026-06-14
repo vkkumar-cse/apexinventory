@@ -91,11 +91,11 @@ export default function ChooseModule() {
   });
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-4xl">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold tracking-tight mb-2">Choose Module</h1>
-          <p className="text-muted-foreground text-lg">Select a module to get started with Apex Software</p>
+    <div className="flex min-h-screen items-center justify-center overflow-x-hidden px-4 py-6 sm:py-8">
+      <div className="w-full max-w-4xl min-w-0">
+        <div className="mb-8 text-center sm:mb-12">
+          <h1 className="mb-2 break-words text-3xl font-bold tracking-tight sm:text-4xl">Choose Module</h1>
+          <p className="text-base text-muted-foreground sm:text-lg">Select a module to get started with Apex Software</p>
         </div>
 
         {modules.length === 0 ? (
@@ -105,18 +105,18 @@ export default function ChooseModule() {
             <p className="text-sm mt-1">Please contact an admin to grant you access to modules.</p>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6">
             {modules.map((module) => (
               <Card
                 key={module.id}
-                className={`p-6 flex flex-col gap-4 transition-all ${
+                className={`flex min-w-0 flex-col gap-4 p-4 transition-all sm:p-6 ${
                   module.status === "available"
                     ? "hover:border-primary/50 hover:shadow-glow cursor-pointer group"
                     : "opacity-60 cursor-not-allowed"
                 }`}
                 onClick={() => module.status === "available" && navigate(module.path)}
               >
-                <div className="flex items-start justify-between">
+                <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="h-12 w-12 rounded-lg gradient-primary text-primary-foreground grid place-items-center shadow-sm">
                     {module.icon}
                   </div>
@@ -124,8 +124,8 @@ export default function ChooseModule() {
                 </div>
 
                 <div className="flex-1">
-                  <h2 className="text-xl font-bold tracking-tight mb-1">{module.title}</h2>
-                  <p className="text-sm text-muted-foreground">{module.description}</p>
+                  <h2 className="mb-1 break-words text-xl font-bold tracking-tight">{module.title}</h2>
+                  <p className="break-words text-sm text-muted-foreground">{module.description}</p>
                 </div>
 
                 {module.status === "available" && (

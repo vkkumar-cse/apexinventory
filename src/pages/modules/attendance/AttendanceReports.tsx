@@ -192,7 +192,22 @@ export default function AttendanceReports() {
           ) : siteRows.length === 0 ? (
             <div className="py-16 text-center text-slate-500">No attendance sessions found for this filter.</div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+            <>
+            <div className="space-y-3 md:hidden">
+              {siteRows.map((row) => (
+                <div key={row.siteName} className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4 text-sm">
+                  <p className="break-words font-semibold text-slate-100">{row.siteName}</p>
+                  <div className="mt-3 grid gap-2 text-slate-300">
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Employees Present</span><span>{row.employeesPresent}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Completed Sessions</span><span>{row.completedSessions}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Total Hours</span><span className="font-mono">{formatHours(row.totalHours)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Active Sessions</span><span className="text-blue-400">{row.activeSessions}</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden rounded-xl border border-slate-800/80 md:block">
               <table className="w-full text-left text-sm">
                 <thead className="bg-[#0B1528]/80 text-xs uppercase tracking-wider text-slate-400">
                   <tr>
@@ -216,6 +231,7 @@ export default function AttendanceReports() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

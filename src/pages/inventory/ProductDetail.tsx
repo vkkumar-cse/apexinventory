@@ -643,9 +643,9 @@ setProductSuppliers(
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setQrLabelPreviewOpen(false)}>Close</Button>
-              <Button onClick={printQrLabel}><Printer className="h-4 w-4 mr-2" />Print QR Label</Button>
+            <div className="grid gap-2 sm:flex sm:justify-end">
+              <Button variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setQrLabelPreviewOpen(false)}>Close</Button>
+              <Button className="min-h-11 w-full sm:w-auto" onClick={printQrLabel}><Printer className="h-4 w-4 mr-2" />Print QR Label</Button>
             </div>
           </div>
         </DialogContent>
@@ -654,10 +654,10 @@ setProductSuppliers(
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit product</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-2"><Label>Name</Label><Input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} /></div>
-            <div className="col-span-2 space-y-2"><Label>Part No.</Label><Input value={edit.part_no} onChange={e => setEdit({ ...edit, part_no: e.target.value })} /></div>
-            <div className="col-span-2 space-y-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2"><Label>Name</Label><Input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label>Part No.</Label><Input value={edit.part_no} onChange={e => setEdit({ ...edit, part_no: e.target.value })} /></div>
+            <div className="space-y-2 sm:col-span-2">
               <Label>Labels</Label>
               <div className="flex gap-2">
                 {(["OPTO", "NPD"] as const).map(l => (
@@ -665,9 +665,9 @@ setProductSuppliers(
                 ))}
               </div>
             </div>
-            <div className="col-span-2 space-y-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
-            <div className="col-span-2 space-y-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2 sm:col-span-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
+            <div className="space-y-2 sm:col-span-2">
               <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
               <Input value={edit.type} onChange={e => setEdit({ ...edit, type: e.target.value })} placeholder="spare, lens, instrument…" />
             </div>
@@ -676,7 +676,7 @@ setProductSuppliers(
               <SearchSelect placeholder="Search sub-category…" value={edit.category_id} onChange={(v) => setEdit({ ...edit, category_id: v })}
                 options={subcats.map(c => ({ value: c.id, label: `${c.parent_name} › ${c.name}` }))} />
             </div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Supplier</Label>
               <SearchSelect placeholder="Search supplier…" value={edit.supplier_id} onChange={(v) => setEdit({ ...edit, supplier_id: v })}
                 options={suppliers.map(s => ({ value: s.id, label: s.name }))} />
@@ -685,8 +685,8 @@ setProductSuppliers(
             <div className="space-y-2"><Label>Selling ₹</Label><Input type="number" min={0} step="0.01" value={edit.selling_price} onChange={e => setEdit({ ...edit, selling_price: e.target.value })} /></div>
             <div className="space-y-2"><Label>Stock</Label><Input type="number" min={0} value={edit.stock} onChange={e => setEdit({ ...edit, stock: e.target.value })} /></div>
             <div className="space-y-2"><Label>Reorder level</Label><Input type="number" min={0} value={edit.reorder_level} onChange={e => setEdit({ ...edit, reorder_level: e.target.value })} /></div>
-            <div className="col-span-2 space-y-2"><Label>Location</Label><Input value={edit.location} onChange={e => setEdit({ ...edit, location: e.target.value })} /></div>
-            <Button className="col-span-2" onClick={saveEdit}>Save changes</Button>
+            <div className="space-y-2 sm:col-span-2"><Label>Location</Label><Input value={edit.location} onChange={e => setEdit({ ...edit, location: e.target.value })} /></div>
+            <Button className="min-h-11 sm:col-span-2" onClick={saveEdit}>Save changes</Button>
           </div>
         </DialogContent>
       </Dialog>
