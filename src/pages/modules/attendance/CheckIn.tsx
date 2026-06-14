@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
+import { formatDurationHours } from "@/lib/formatDuration";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { 
@@ -42,31 +43,45 @@ type EmployeeFaceProfile = {
   updated_at: string | null;
 };
 
-type AttendanceRecord = {
+type AttendanceSession = {
   id: string;
-  employee_id: string;
+  profile_id: string;
   attendance_date: string;
-  check_in: string | null;
+  site_id: string | null;
+  site_name_snapshot: string;
+  check_in: string;
   check_out: string | null;
-  check_in_selfie: string | null;
-  check_out_selfie: string | null;
-  working_hours: number | null;
-  status: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  face_verified: boolean | null;
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  check_in_distance_meters: number | null;
+  check_out_distance_meters: number | null;
+  face_verified: boolean;
   face_match_score: number | null;
-  gps_verified: boolean | null;
-  distance_meters: number | null;
+  status: string;
 };
 
 const DEMO_MODE = false;
 
-// Office Location Constants
-const OFFICE_LAT = 13.138576;
-const OFFICE_LNG = 80.173716;
-const ALLOWED_RADIUS = 100; // in meters
 const FACE_DISTANCE_THRESHOLD = 0.45;
+const DEFAULT_MINIMUM_FULL_DAY_HOURS = 8;
+
+type AttendanceSite = {
+  id: string;
+  site_name: string;
+  latitude: number | string;
+  longitude: number | string;
+  radius_meters: number;
+  is_default: boolean;
+  is_active: boolean;
+};
+
+type SiteValidation = {
+  site: AttendanceSite;
+  distance: number;
+  inside: boolean;
+};
 
 type VerifiedGpsCoords = {
   latitude: number;
@@ -77,7 +92,7 @@ type VerifiedGpsCoords = {
 export default function CheckIn() {
   const { user, displayName } = useAuth();
   const [profiles, setProfiles] = useState<ProfileLite[]>([]);
-  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceSession[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [faceProfile, setFaceProfile] = useState<EmployeeFaceProfile | null>(null);
@@ -85,7 +100,9 @@ export default function CheckIn() {
   // Geolocation State
   const [currentCoords, setCurrentCoords] = useState<VerifiedGpsCoords | null>(null);
   const [locationStatus, setLocationStatus] = useState<"idle" | "fetching" | "success" | "error">("idle");
-  const [distanceFromOffice, setDistanceFromOffice] = useState<number | null>(null);
+  const [allowedSites, setAllowedSites] = useState<AttendanceSite[]>([]);
+  const [selectedAttendanceSiteId, setSelectedAttendanceSiteId] = useState("");
+  const [siteValidation, setSiteValidation] = useState<SiteValidation | null>(null);
 
   // Webcam & Face Verification State
   const webcamRef = useRef<Webcam>(null);
@@ -93,7 +110,9 @@ export default function CheckIn() {
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
   const [pendingCoords, setPendingCoords] = useState<VerifiedGpsCoords | null>(null);
-  const [pendingDistanceMeters, setPendingDistanceMeters] = useState<number | null>(null);
+  const [pendingSiteValidation, setPendingSiteValidation] = useState<SiteValidation | null>(null);
+  const [pendingOpenSession, setPendingOpenSession] = useState<AttendanceSession | null>(null);
+  const [pendingAction, setPendingAction] = useState<"check_in" | "check_out" | null>(null);
   const currentProfileId = user?.id ?? "";
   const currentProfile = profiles.find((profile) => profile.id === currentProfileId);
   const currentProfileName =
@@ -104,7 +123,24 @@ export default function CheckIn() {
     user?.email ||
     "Your profile";
   const hasValidFaceProfile = isValidFaceDescriptor(faceProfile?.face_descriptor);
-  const hasValidGps = locationStatus === "success" && distanceFromOffice !== null && distanceFromOffice <= ALLOWED_RADIUS;
+  const isOpenAttendanceSession = (record: AttendanceSession | null | undefined) => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    return Boolean(record && !record.check_out && record.status === "open" && record.attendance_date === today);
+  };
+  const activeSession = todayAttendance.find((record) => isOpenAttendanceSession(record)) ?? null;
+  const selectedSite = allowedSites.find((site) => site.id === selectedAttendanceSiteId) ?? null;
+  const canUseVerifiedGps = Boolean(
+    siteValidation?.inside &&
+    selectedSite &&
+    siteValidation.site.id === selectedSite.id &&
+    locationStatus === "success"
+  );
+  const totalCompletedHours = todayAttendance.reduce((total, record) => {
+    if (!record.check_out) return total;
+    const diffMs = new Date(record.check_out).getTime() - new Date(record.check_in).getTime();
+    return total + Math.max(0, diffMs / (1000 * 60 * 60));
+  }, 0);
 
   const getTodayDateString = () => {
     const now = new Date();
@@ -112,6 +148,20 @@ export default function CheckIn() {
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+  };
+
+  const logAttendanceState = (label: string, openSession: AttendanceSession | null, activeSite?: AttendanceSite | null) => {
+    console.log(label, {
+      openSession,
+      assignedSites: allowedSites,
+      activeSite: activeSite ?? null,
+      currentAttendanceState: {
+        currentProfileId,
+        todayAttendance,
+        activeSession,
+        hasOpenSession: Boolean(openSession),
+      },
+    });
   };
 
   const fetchProfiles = async () => {
@@ -170,26 +220,113 @@ export default function CheckIn() {
     const today = getTodayDateString();
     
     const { data, error } = await supabase
-      .from("attendance" as any)
+      .from("attendance_sessions" as any)
       .select("*")
+      .eq("profile_id", currentProfileId)
       .eq("attendance_date", today)
       .order("check_in", { ascending: false });
 
     if (!error && data) {
-      setTodayAttendance(data as unknown as AttendanceRecord[]);
+      setTodayAttendance(data as unknown as AttendanceSession[]);
     } else if (error) {
       console.error("Error fetching attendance:", error);
     }
   };
 
+  const fetchAllowedSites = async () => {
+    if (!currentProfileId) {
+      setAllowedSites([]);
+      return;
+    }
+
+    try {
+      const { data: assignments, error: assignmentError } = await (supabase as any)
+        .from("employee_site_assignments")
+        .select("site_id")
+        .eq("profile_id", currentProfileId);
+
+      if (assignmentError) throw assignmentError;
+
+      const assignedSiteIds = Array.from(new Set(((assignments ?? []) as any[])
+        .map((row) => row.site_id)
+        .filter((siteId): siteId is string => Boolean(siteId))));
+
+      if (assignedSiteIds.length > 0) {
+        const { data: assignedSitesRaw, error: assignedSitesError } = await (supabase as any)
+          .from("attendance_sites")
+          .select("id,site_name,latitude,longitude,radius_meters,is_default,is_active")
+          .in("id", assignedSiteIds)
+          .eq("is_active", true);
+
+        if (assignedSitesError) throw assignedSitesError;
+
+        const assignedSites = (assignedSitesRaw ?? []) as AttendanceSite[];
+        console.log("assignedSites", assignedSites);
+
+        if (assignedSites.length > 0) {
+          setAllowedSites(assignedSites);
+          return;
+        }
+
+        setAllowedSites([]);
+        toast.error("No active assigned attendance site is available. Contact an admin.");
+        return;
+      }
+
+      console.log("assignedSites", []);
+      const { data: defaultSite, error: defaultError } = await (supabase as any)
+        .from("attendance_sites")
+        .select("id,site_name,latitude,longitude,radius_meters,is_default,is_active")
+        .eq("is_default", true)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (defaultError) throw defaultError;
+      if (!defaultSite) {
+        setAllowedSites([]);
+        toast.error("No active default Main Office site is configured.");
+        return;
+      }
+
+      setAllowedSites([defaultSite as AttendanceSite]);
+    } catch (err: any) {
+      setAllowedSites([]);
+      toast.error(err.message || "Failed to load attendance sites");
+    }
+  };
+
   useEffect(() => {
     fetchProfiles();
-    fetchTodayAttendance();
   }, []);
 
   useEffect(() => {
     fetchFaceProfile();
+    fetchAllowedSites();
+    fetchTodayAttendance();
   }, [currentProfileId]);
+
+  useEffect(() => {
+    const lockedSiteId = activeSession?.site_id ?? "";
+    if (lockedSiteId && selectedAttendanceSiteId !== lockedSiteId) {
+      setSelectedAttendanceSiteId(lockedSiteId);
+      return;
+    }
+
+    if (!lockedSiteId && !selectedAttendanceSiteId && allowedSites.length > 0) {
+      setSelectedAttendanceSiteId(allowedSites[0].id);
+      return;
+    }
+
+    if (!lockedSiteId && selectedAttendanceSiteId && !allowedSites.some((site) => site.id === selectedAttendanceSiteId)) {
+      setSelectedAttendanceSiteId(allowedSites[0]?.id ?? "");
+    }
+  }, [activeSession?.site_id, allowedSites, selectedAttendanceSiteId]);
+
+  useEffect(() => {
+    setCurrentCoords(null);
+    setSiteValidation(null);
+    setLocationStatus("idle");
+  }, [selectedAttendanceSiteId]);
 
   // Haversine formula to calculate distance in meters
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -241,23 +378,91 @@ export default function CheckIn() {
     });
   };
 
-  const verifyGpsLocation = async () => {
+  const getMinimumFullDayHours = async () => {
+    const { data, error } = await (supabase as any)
+      .from("attendance_settings")
+      .select("value")
+      .eq("key", "minimum_full_day_hours")
+      .maybeSingle();
+
+    if (error) {
+      console.warn("Failed to load attendance settings:", error);
+      return DEFAULT_MINIMUM_FULL_DAY_HOURS;
+    }
+
+    const value = Number(data?.value ?? DEFAULT_MINIMUM_FULL_DAY_HOURS);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_MINIMUM_FULL_DAY_HOURS;
+  };
+
+  const fetchOpenSession = async () => {
+    if (!currentProfileId) return null;
+
+    const { data, error } = await (supabase as any)
+      .from("attendance_sessions")
+      .select("*")
+      .eq("profile_id", currentProfileId)
+      .eq("attendance_date", getTodayDateString())
+      .is("check_out", null)
+      .eq("status", "open")
+      .order("check_in", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const openSession = data as AttendanceSession | null;
+    console.log("openSession", openSession);
+    return openSession;
+  };
+
+  const verifyGpsLocation = async (requiredSiteId?: string | null, openSession?: AttendanceSession | null) => {
     setIsLocating(true);
     setLocationStatus("fetching");
     try {
-      const coords = await getCoordinates();
-      const distance = calculateDistance(coords.latitude, coords.longitude, OFFICE_LAT, OFFICE_LNG);
-      setCurrentCoords(coords);
-      setDistanceFromOffice(distance);
+      if (allowedSites.length === 0) {
+        throw new Error("No attendance site is available for your profile. Contact an admin.");
+      }
 
-      if (distance > ALLOWED_RADIUS) {
+      const siteIdToValidate = requiredSiteId ?? selectedAttendanceSiteId;
+      if (!siteIdToValidate) {
+        throw new Error("Select Attendance Site before GPS verification.");
+      }
+
+      const selectedCandidate = allowedSites.find((site) => site.id === siteIdToValidate) ?? null;
+
+      if (isOpenAttendanceSession(openSession) && requiredSiteId && !selectedCandidate) {
+        logAttendanceState("currentAttendanceState", openSession ?? null, null);
+        throw new Error("Your check-out site is no longer active or assigned. Contact an admin.");
+      }
+
+      if (!selectedCandidate) {
+        throw new Error("Selected attendance site is not active or assigned.");
+      }
+
+      const coords = await getCoordinates();
+      const distance = calculateDistance(coords.latitude, coords.longitude, Number(selectedCandidate.latitude), Number(selectedCandidate.longitude));
+      const validation: SiteValidation = {
+        site: selectedCandidate,
+        distance,
+        inside: distance <= selectedCandidate.radius_meters,
+      };
+
+      setCurrentCoords(coords);
+      setSiteValidation(validation);
+      console.log("activeSite", validation.site);
+      logAttendanceState("currentAttendanceState", openSession ?? null, validation.site);
+
+      if (!validation.inside) {
         setLocationStatus("error");
-        toast.error(`Outside office radius (Distance: ${Math.round(distance)}m)`);
+        toast.error("Out of Premises", {
+          description: `${validation.site.site_name}: ${Math.round(validation.distance)}m away. Radius ${validation.site.radius_meters}m.`,
+        });
         return null;
       }
 
       setLocationStatus("success");
-      return { coords, distance };
+      toast.success("GPS Verified");
+      return { coords, validation };
     } catch (error: any) {
       let errMsg = "GPS verification failed";
       if (error?.message) errMsg = error.message;
@@ -274,101 +479,161 @@ export default function CheckIn() {
 
   const saveAttendance = async (
     coords: VerifiedGpsCoords,
-    distanceMeters: number,
+    validation: SiteValidation,
     faceMatchScore: number
   ) => {
     const today = getTodayDateString();
     const now = new Date();
     const nowISO = now.toISOString();
 
-    // Check existing record for current profile today
-    const { data, error: fetchError } = await supabase
-      .from("attendance" as any)
+    const summarizeSessions = async () => {
+      const { data: sessionsRaw, error: sessionsError } = await (supabase as any)
+        .from("attendance_sessions")
+        .select("*")
+        .eq("profile_id", currentProfileId)
+        .eq("attendance_date", today)
+        .order("check_in", { ascending: true });
+
+      if (sessionsError) throw sessionsError;
+
+      const sessions = (sessionsRaw ?? []) as AttendanceSession[];
+      const firstSession = sessions[0];
+      if (!firstSession) return;
+
+      const completedSessions = sessions.filter((session) => Boolean(session.check_out));
+      const hasOpenSession = sessions.some((session) => !session.check_out && session.status === "open");
+      const minimumFullDayHours = await getMinimumFullDayHours();
+      const workingHours = completedSessions.reduce((total, session) => {
+        const diffMs = new Date(session.check_out as string).getTime() - new Date(session.check_in).getTime();
+        return total + Math.max(0, diffMs / (1000 * 60 * 60));
+      }, 0);
+      const latestCompleted = completedSessions[completedSessions.length - 1] ?? null;
+      const latestSession = sessions[sessions.length - 1] ?? firstSession;
+      const firstCheckIn = new Date(firstSession.check_in);
+      const limitTime = new Date(firstCheckIn);
+      limitTime.setHours(9, 15, 0, 0);
+      const isLate = firstCheckIn.getTime() > limitTime.getTime();
+      const calculatedStatus = completedSessions.length === 0
+        ? "absent"
+        : workingHours < minimumFullDayHours
+          ? "half-day"
+          : isLate
+            ? "late"
+            : "present";
+      const summaryPayload = {
+        employee_id: currentProfileId,
+        attendance_date: today,
+        check_in: firstSession.check_in,
+        check_out: latestCompleted?.check_out ?? null,
+        working_hours: Number(workingHours.toFixed(2)),
+        status: calculatedStatus,
+        latitude: latestSession.check_out_latitude ?? latestSession.check_in_latitude,
+        longitude: latestSession.check_out_longitude ?? latestSession.check_in_longitude,
+        gps_verified: true,
+        face_verified: sessions.every((session) => session.face_verified),
+        face_match_score: latestSession.face_match_score,
+        distance_meters: latestSession.check_out_distance_meters ?? latestSession.check_in_distance_meters,
+        site_id: latestSession.site_id,
+        site_name_snapshot: latestSession.site_name_snapshot,
+      };
+
+      const { data: existingDaily, error: dailyFetchError } = await (supabase as any)
+        .from("attendance")
+        .select("id")
+        .eq("employee_id", currentProfileId)
+        .eq("attendance_date", today)
+        .order("check_in", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (dailyFetchError) throw dailyFetchError;
+
+      const result = existingDaily?.id
+        ? await (supabase as any).from("attendance").update(summaryPayload).eq("id", existingDaily.id)
+        : await (supabase as any).from("attendance").insert(summaryPayload);
+
+      if (result.error) throw result.error;
+    };
+
+    const { data, error: fetchError } = await (supabase as any)
+      .from("attendance_sessions")
       .select("*")
-      .eq("employee_id", currentProfileId)
-      .eq("attendance_date", today);
+      .eq("profile_id", currentProfileId)
+      .eq("attendance_date", today)
+      .is("check_out", null)
+      .eq("status", "open")
+      .order("check_in", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
 
-    const existingRecords = data as any[] | null;
-    const existingRecord = existingRecords && existingRecords.length > 0 ? existingRecords[0] : null;
+    const openSession = data as AttendanceSession | null;
 
-    // CASE 1: No attendance record exists today -> Create check-in record
-    if (!existingRecord) {
-      // Late Mark Rule: Office start time = 9:00 AM, Grace period = 15 mins (limit is 9:15 AM)
-      const limitTime = new Date();
-      limitTime.setHours(9, 15, 0, 0);
-
-      let calculatedStatus = "present";
-      if (now.getTime() > limitTime.getTime()) {
-        calculatedStatus = "late";
-      }
-
-      const { error } = await supabase.from("attendance" as any).insert({
-        employee_id: currentProfileId,
+    if (!openSession) {
+      const { error } = await (supabase as any).from("attendance_sessions").insert({
+        profile_id: currentProfileId,
         attendance_date: today,
+        site_id: validation.site.id,
+        site_name_snapshot: validation.site.site_name,
         check_in: nowISO,
-        status: calculatedStatus,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        gps_verified: true,
+        check_in_latitude: coords.latitude,
+        check_in_longitude: coords.longitude,
+        check_in_distance_meters: validation.distance,
         face_verified: true,
         face_match_score: faceMatchScore,
-        distance_meters: distanceMeters,
+        status: "open",
       } as any);
 
       if (error) throw error;
-      toast.success(`Check-in successful! Marked as ${calculatedStatus}`);
+      await summarizeSessions();
+      toast.success(`Check-in successful at ${validation.site.site_name}`);
+      return;
     }
-    // CASE 2: Attendance record exists today, check_out is null -> Verify GPS again -> Update check_out
-    else if (!existingRecord.check_out) {
-      const checkOutTimestamp = nowISO;
-      const checkInTime = new Date(existingRecord.check_in).getTime();
-      const checkOutTime = new Date(checkOutTimestamp).getTime();
-      const diffMs = checkOutTime - checkInTime;
-      const workingHours = Number(((diffMs / (1000 * 60 * 60)).toFixed(2)));
 
-      // Debug logs
-      console.log("RAW CHECK IN:", existingRecord.check_in);
-      console.log("RAW CHECK OUT:", checkOutTimestamp);
-      console.log("CHECK IN MS:", checkInTime);
-      console.log("CHECK OUT MS:", checkOutTime);
-      console.log("WORKING HOURS:", workingHours);
-
-      // Half Day Rule: If total working hours < 4: status = "half-day"
-      // Otherwise, keep the original status (present or late)
-      let calculatedStatus = existingRecord.status || "present";
-      if (workingHours < 4) {
-        calculatedStatus = "half-day";
-      }
-
-      const { error } = await supabase
-        .from("attendance" as any)
-        .update({
-          check_out: nowISO,
-          working_hours: workingHours,
-          status: calculatedStatus,
-          latitude: coords.latitude, // Store/update GPS of check-out
-          longitude: coords.longitude,
-          gps_verified: true,
-          face_verified: true,
-          face_match_score: faceMatchScore,
-          distance_meters: distanceMeters,
-        } as any)
-        .eq("id", existingRecord.id);
-
-      if (error) throw error;
-      toast.success(`Check-out successful! Calculated working hours: ${workingHours} hrs (${calculatedStatus})`);
+    if (openSession.site_id !== validation.site.id) {
+      toast.error("Check-Out Must Be From Same Site", {
+        description: `Current active session is at ${openSession.site_name_snapshot}.`,
+      });
+      return;
     }
-    // CASE 3: Attendance record already has check_out -> Block and warn
-    else {
-      toast.error("Attendance already completed for today");
-    }
+
+    const checkOutTimestamp = nowISO;
+    const checkInTime = new Date(openSession.check_in).getTime();
+    const checkOutTime = new Date(checkOutTimestamp).getTime();
+    const sessionHours = Number(((checkOutTime - checkInTime) / (1000 * 60 * 60)).toFixed(2));
+
+    const { error } = await (supabase as any)
+      .from("attendance_sessions")
+      .update({
+        check_out: nowISO,
+        check_out_latitude: coords.latitude,
+        check_out_longitude: coords.longitude,
+        check_out_distance_meters: validation.distance,
+        face_verified: true,
+        face_match_score: faceMatchScore,
+        status: "completed",
+      } as any)
+      .eq("id", openSession.id);
+
+    if (error) throw error;
+    await summarizeSessions();
+    toast.success(`Check-out successful from ${openSession.site_name_snapshot}. Session: ${formatDurationHours(sessionHours)}`);
   };
 
   const handleMarkAttendance = async () => {
     if (!currentProfileId) {
       toast.error("No active profile found");
+      return;
+    }
+
+    if (!selectedSite) {
+      toast.error("Select Attendance Site");
+      return;
+    }
+
+    if (!canUseVerifiedGps || !currentCoords || !siteValidation) {
+      toast.error("Verify GPS before continuing");
       return;
     }
 
@@ -381,14 +646,29 @@ export default function CheckIn() {
     setIsSubmitting(true);
 
     try {
-      const gpsResult = await verifyGpsLocation();
-      if (!gpsResult) {
+      const openSessionForAction = await fetchOpenSession();
+      logAttendanceState("currentAttendanceState", openSessionForAction, openSessionForAction?.site_id ? allowedSites.find((site) => site.id === openSessionForAction.site_id) ?? null : null);
+
+      if (openSessionForAction?.site_id && openSessionForAction.site_id !== siteValidation.site.id) {
+        toast.error("Check-Out Must Be From Same Site", {
+          description: `Current active session is at ${openSessionForAction.site_name_snapshot}.`,
+        });
         setIsSubmitting(false);
         return;
       }
 
-      setPendingCoords(gpsResult.coords);
-      setPendingDistanceMeters(gpsResult.distance);
+      if (!openSessionForAction && activeSession) {
+        toast.error("Attendance session changed", {
+          description: "Please refresh and try again.",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      setPendingCoords(currentCoords);
+      setPendingSiteValidation(siteValidation);
+      setPendingOpenSession(openSessionForAction);
+      setPendingAction(openSessionForAction ? "check_out" : "check_in");
       setCameraPermissionError(null);
       setShowFaceCamera(true);
     } catch (error: any) {
@@ -410,10 +690,31 @@ export default function CheckIn() {
     }
   };
 
+  const handleVerifyGps = async () => {
+    try {
+      const openSession = await fetchOpenSession();
+      if (openSession?.site_id) {
+        setSelectedAttendanceSiteId(openSession.site_id);
+        await verifyGpsLocation(openSession.site_id, openSession);
+        return;
+      }
+
+      if (!selectedAttendanceSiteId) {
+        toast.error("Select Attendance Site");
+        return;
+      }
+
+      await verifyGpsLocation(selectedAttendanceSiteId, null);
+    } catch (error: any) {
+      toast.error(error?.message || "GPS verification failed");
+      setLocationStatus("error");
+    }
+  };
+
   const deleteAttendance = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this attendance record?")) return;
 
-    const { error } = await supabase.from("attendance" as any).delete().eq("id", id);
+    const { error } = await (supabase as any).from("attendance_sessions").delete().eq("id", id);
     if (error) {
       toast.error(error.message);
       return;
@@ -445,9 +746,9 @@ export default function CheckIn() {
       return;
     }
 
-    if (!pendingCoords || pendingDistanceMeters === null || pendingDistanceMeters > 100) {
-      toast.error("Outside office radius", {
-        description: "Attendance allowed only within 100 meters of the office."
+    if (!pendingCoords || !pendingSiteValidation?.inside) {
+      toast.error("Outside allowed site radius", {
+        description: "Attendance is allowed only within your validated attendance site."
       });
       return;
     }
@@ -462,8 +763,8 @@ export default function CheckIn() {
       const faceMatchPercentage = Math.round(faceScore * 100);
       const faceVerified = faceDistance <= FACE_DISTANCE_THRESHOLD;
       
-      const gpsVerified = pendingCoords !== null && pendingDistanceMeters !== null && pendingDistanceMeters <= ALLOWED_RADIUS;
-      const distanceMeters = pendingDistanceMeters;
+      const gpsVerified = pendingCoords !== null && pendingSiteValidation?.inside === true;
+      const distanceMeters = pendingSiteValidation?.distance ?? null;
 
       console.log("FINAL ATTENDANCE CHECK", {
         gpsVerified,
@@ -479,17 +780,39 @@ export default function CheckIn() {
         return;
       }
 
-      if (!gpsVerified || !pendingCoords || distanceMeters === null || distanceMeters > ALLOWED_RADIUS) {
-        toast.error("Outside office radius", {
-          description: "Attendance allowed only within 100 meters of the office."
+      if (!gpsVerified || !pendingCoords || !pendingSiteValidation || distanceMeters === null || distanceMeters > pendingSiteValidation.site.radius_meters) {
+        toast.error("Outside allowed site radius", {
+          description: "Attendance is allowed only within your validated attendance site."
         });
         return;
       }
 
-      await saveAttendance(pendingCoords, distanceMeters, faceScore);
+      const openSessionForCheckout = await fetchOpenSession();
+      if (pendingAction === "check_in" && openSessionForCheckout) {
+        toast.error("Attendance session changed", {
+          description: "Please restart attendance verification."
+        });
+        return;
+      }
+      if (pendingAction === "check_out" && (!pendingOpenSession?.id || openSessionForCheckout?.id !== pendingOpenSession.id)) {
+        toast.error("Attendance session changed", {
+          description: "Please restart attendance verification."
+        });
+        return;
+      }
+      if (openSessionForCheckout?.site_id && openSessionForCheckout.site_id !== pendingSiteValidation.site.id) {
+        toast.error("Check-Out Must Be From Same Site", {
+          description: `Current active session is at ${openSessionForCheckout.site_name_snapshot}.`,
+        });
+        return;
+      }
+
+      await saveAttendance(pendingCoords, pendingSiteValidation, faceScore);
       setShowFaceCamera(false);
       setPendingCoords(null);
-      setPendingDistanceMeters(null);
+      setPendingSiteValidation(null);
+      setPendingOpenSession(null);
+      setPendingAction(null);
       await fetchTodayAttendance();
     } catch (error: any) {
       const errorMessage = error.message || "";
@@ -513,7 +836,9 @@ export default function CheckIn() {
   const resetFaceCamera = () => {
     setShowFaceCamera(false);
     setPendingCoords(null);
-    setPendingDistanceMeters(null);
+    setPendingSiteValidation(null);
+    setPendingOpenSession(null);
+    setPendingAction(null);
     setCameraPermissionError(null);
     setIsSubmitting(false);
   };
@@ -529,9 +854,29 @@ const formatISTTime = (time: string | null) => {
   });
 };
 
+  const getSessionHours = (record: AttendanceSession) => {
+    if (!record.check_out) return null;
+    const diffMs = new Date(record.check_out).getTime() - new Date(record.check_in).getTime();
+    return Number(Math.max(0, diffMs / (1000 * 60 * 60)).toFixed(2));
+  };
+
   const getStatusBadge = (status: string | null) => {
     const statusVal = (status || "present").toLowerCase();
     switch (statusVal) {
+      case "open":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            <Clock className="w-3.5 h-3.5" />
+            Open
+          </span>
+        );
+      case "completed":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Completed
+          </span>
+        );
       case "present":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -551,6 +896,13 @@ const formatISTTime = (time: string | null) => {
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
             <Hourglass className="w-3.5 h-3.5" />
             Half Day
+          </span>
+        );
+      case "absent":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Absent
           </span>
         );
       default:
@@ -589,18 +941,20 @@ const formatISTTime = (time: string | null) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10 mb-8">
-        {/* Left Widget: Check In Card */}
-        <div className="lg:col-span-1 bg-[#13223D]/60 border border-slate-800/80 p-6 rounded-2xl shadow-xl backdrop-blur-sm flex flex-col justify-between">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] gap-6 relative z-10 mb-8">
+        <div className="bg-[#13223D]/60 border border-slate-800/80 p-5 md:p-6 rounded-2xl shadow-xl backdrop-blur-sm">
           <div>
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center gap-2 mb-5">
               <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
                 <Clock className="w-5 h-5" />
               </div>
-              <h2 className="text-xl font-bold text-slate-100">Check In / Out Portal</h2>
+              <div>
+                <h2 className="text-xl font-bold text-slate-100">Attendance Check-In</h2>
+                <p className="text-xs text-slate-400">Select your site, verify GPS, then complete face verification.</p>
+              </div>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="profile" className="text-slate-300 font-medium text-sm">
                   Profile
@@ -618,12 +972,37 @@ const formatISTTime = (time: string | null) => {
                 </div>
               </div>
 
-              {/* GPS Live Status Section */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="attendance-site" className="text-slate-300 font-medium text-sm">
+                  Select Attendance Site
+                </Label>
+                <select
+                  id="attendance-site"
+                  value={selectedAttendanceSiteId}
+                  disabled={Boolean(activeSession) || allowedSites.length === 0 || isSubmitting || isLocating}
+                  onChange={(event) => setSelectedAttendanceSiteId(event.target.value)}
+                  className="flex h-12 w-full rounded-xl border border-slate-700/80 bg-[#162A4E] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {allowedSites.length === 0 ? (
+                    <option value="">No active site available</option>
+                  ) : (
+                    allowedSites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.site_name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                {activeSession && (
+                  <p className="text-xs text-blue-300">Active session locked to {activeSession.site_name_snapshot}.</p>
+                )}
+              </div>
+
               <div className="bg-[#0B1528]/80 border border-slate-800 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                    GPS Verification
+                    GPS Status
                   </span>
                   {locationStatus === "fetching" && (
                     <span className="text-amber-400 flex items-center gap-1 font-medium">
@@ -634,7 +1013,7 @@ const formatISTTime = (time: string | null) => {
                   {locationStatus === "success" && (
                     <span className="text-emerald-400 flex items-center gap-1 font-medium">
                       <CheckCircle2 className="w-3 h-3" />
-                      Verified Location
+                      GPS Verified
                     </span>
                   )}
                   {locationStatus === "error" && (
@@ -648,28 +1027,51 @@ const formatISTTime = (time: string | null) => {
                   )}
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-lg bg-[#13223D]/70 border border-slate-800 p-3">
+                    <div className="text-slate-500">Selected Site</div>
+                    <div className="font-semibold text-slate-100 truncate">{selectedSite?.site_name ?? "-"}</div>
+                  </div>
+                  <div className="rounded-lg bg-[#13223D]/70 border border-slate-800 p-3">
+                    <div className="text-slate-500">Radius</div>
+                    <div className="font-semibold text-slate-100">{selectedSite ? `${selectedSite.radius_meters}m` : "-"}</div>
+                  </div>
+                  <div className="rounded-lg bg-[#13223D]/70 border border-slate-800 p-3">
+                    <div className="text-slate-500">Current Distance</div>
+                    <div className={`font-semibold ${siteValidation?.inside ? "text-emerald-400" : siteValidation ? "text-red-400" : "text-slate-100"}`}>
+                      {siteValidation ? `${Math.round(siteValidation.distance)}m` : "-"}
+                    </div>
+                  </div>
+                </div>
+
                 {currentCoords && (
                   <div className="text-xs text-slate-300 space-y-1 pt-1 border-t border-slate-800/80">
                     <div className="flex justify-between">
                       <span className="text-slate-500">Coordinates:</span>
                       <span className="font-mono">{currentCoords.latitude.toFixed(4)}, {currentCoords.longitude.toFixed(4)}</span>
                     </div>
-                    {distanceFromOffice !== null && (
+                    {siteValidation && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">Distance:</span>
-                        <span className={`font-semibold ${distanceFromOffice <= ALLOWED_RADIUS ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {Math.round(distanceFromOffice)}m / {ALLOWED_RADIUS}m limit
+                        <span className={`font-semibold ${siteValidation.inside ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {Math.round(siteValidation.distance)}m / {siteValidation.site.radius_meters}m
                         </span>
+                      </div>
+                    )}
+                    {siteValidation && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Attendance Site:</span>
+                        <span className="font-semibold text-slate-200">{siteValidation.site.site_name}</span>
                       </div>
                     )}
                   </div>
                 )}
                 <Button
                   type="button"
-                  onClick={verifyGpsLocation}
-                  disabled={isLocating || isSubmitting}
+                  onClick={handleVerifyGps}
+                  disabled={isLocating || isSubmitting || !selectedAttendanceSiteId}
                   variant="outline"
-                  className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+                  className="w-full h-11 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
                 >
                   {isLocating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <MapPin className="w-4 h-4 mr-2" />}
                   Verify GPS
@@ -680,7 +1082,7 @@ const formatISTTime = (time: string | null) => {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400 flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5 text-indigo-400" />
-                    Face Verification
+                    Face Verification Status
                   </span>
                   {hasValidFaceProfile ? (
                     <span className="text-emerald-400 flex items-center gap-1 font-medium">
@@ -705,7 +1107,7 @@ const formatISTTime = (time: string | null) => {
 
           <Button
             onClick={handleMarkAttendance}
-            disabled={isSubmitting || isLocating || !currentProfileId || !hasValidFaceProfile || !hasValidGps}
+            disabled={isSubmitting || isLocating || !currentProfileId || !hasValidFaceProfile || !canUseVerifiedGps}
             className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold h-12 rounded-xl mt-6 transition-all duration-300 shadow-md shadow-blue-500/10 flex items-center justify-center gap-2 border border-blue-500/20 active:scale-[0.98]"
           >
             {isLocating ? (
@@ -721,84 +1123,32 @@ const formatISTTime = (time: string | null) => {
             ) : (
               <>
                 <MapPin className="w-5 h-5 rotate-45" />
-                Mark Attendance
+                {activeSession ? "Check Out" : "Check In"}
               </>
             )}
           </Button>
         </div>
 
-        {/* Right Widgets: Detailed Info Panels */}
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Rules Card */}
-          <div className="bg-[#13223D]/60 border border-slate-800/80 p-6 rounded-2xl shadow-xl backdrop-blur-sm space-y-4">
-            <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              <Shield className="w-4 h-4 text-blue-400" />
-              Attendance Rules System
-            </h3>
-            
-            <div className="space-y-3.5 text-sm text-slate-300">
-              <div className="p-3 bg-[#0B1528]/80 border border-slate-800 rounded-xl">
-                <span className="text-xs font-extrabold text-blue-400 uppercase tracking-wide">Rule 1: Office Radius Limit</span>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Employees must be within <strong className="text-slate-200">100 meters</strong> of the office location coordinates to check-in or check-out successfully.
-                </p>
-              </div>
+        <div className="bg-[#13223D]/60 border border-slate-800/80 p-5 md:p-6 rounded-2xl shadow-xl backdrop-blur-sm">
+          <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 mb-4">
+            <Info className="w-4 h-4 text-indigo-400" />
+            Current Status
+          </h3>
 
-              <div className="p-3 bg-[#0B1528]/80 border border-slate-800 rounded-xl">
-                <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wide">Rule 2: Late Mark Calculation</span>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Office starts at <strong className="text-slate-200">9:00 AM</strong>. A <strong className="text-slate-200">15-minute</strong> grace period is allowed. Check-ins after <strong className="text-slate-200">9:15 AM</strong> are automatically marked <strong className="text-amber-400">Late</strong>.
-                </p>
-              </div>
-
-              <div className="p-3 bg-[#0B1528]/80 border border-slate-800 rounded-xl">
-                <span className="text-xs font-extrabold text-indigo-400 uppercase tracking-wide">Rule 3: Half-Day Validation</span>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  During check-out, working hours are computed automatically. If the total working hours are <strong className="text-slate-200">less than 4 hours</strong>, status is marked <strong className="text-indigo-400">Half Day</strong>.
-                </p>
-              </div>
-
-              <div className="p-3 bg-[#0B1528]/80 border border-slate-800 rounded-xl">
-                <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wide">Rule 4: Live Face Match</span>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Check-in and check-out require one live face to match the registered face profile before attendance is saved.
-                </p>
-              </div>
+          <div className="space-y-3 text-sm text-slate-300">
+            <div className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Active Session</div>
+              <div className="mt-1 font-semibold text-slate-100">{activeSession?.site_name_snapshot ?? "None"}</div>
+              {activeSession && <div className="mt-1 text-xs text-slate-500">Checked in at {formatISTTime(activeSession.check_in)}</div>}
             </div>
-          </div>
-
-          {/* Quick Metrics Card */}
-          <div className="bg-[#13223D]/60 border border-slate-800/80 p-6 rounded-2xl shadow-xl backdrop-blur-sm flex flex-col justify-between">
-            <div>
-              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 mb-4">
-                <Info className="w-4 h-4 text-indigo-400" />
-                Office Premises Details
-              </h3>
-              
-              <div className="space-y-3.5 text-sm text-slate-300">
-                <div className="flex justify-between items-center py-2 border-b border-slate-800/80">
-                  <span className="text-slate-400">Office Latitude</span>
-                  <span className="font-mono text-slate-200 font-medium">{OFFICE_LAT.toFixed(6)}° N</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-slate-800/80">
-                  <span className="text-slate-400">Office Longitude</span>
-                  <span className="font-mono text-slate-200 font-medium">{OFFICE_LNG.toFixed(6)}° E</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-slate-800/80">
-                  <span className="text-slate-400">Allowed Perimeter</span>
-                  <span className="text-slate-200 font-medium">100 meters (Allowed Radius)</span>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <span className="text-slate-400">Demo Deletions</span>
-                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                    {DEMO_MODE ? "ENABLED" : "DISABLED"}
-                  </span>
-                </div>
-              </div>
+            <div className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Completed Hours Today</div>
+              <div className="mt-1 font-mono text-lg font-bold text-emerald-400">{formatDurationHours(totalCompletedHours)}</div>
             </div>
-
-            <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-3.5 mt-4 text-xs text-slate-400 leading-relaxed">
-              <strong className="text-blue-400">Security Notice:</strong> All check-in and check-out requests are strictly verified against device GPS sensors. Falsifying GPS positions is restricted.
+            <div className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Selected Site</div>
+              <div className="mt-1 font-semibold text-slate-100">{selectedSite?.site_name ?? "-"}</div>
+              <div className="mt-1 text-xs text-slate-500">Radius: {selectedSite ? `${selectedSite.radius_meters}m` : "-"}</div>
             </div>
           </div>
         </div>
@@ -811,7 +1161,7 @@ const formatISTTime = (time: string | null) => {
             <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">
               <Calendar className="w-5 h-5" />
             </div>
-            <h2 className="text-xl font-bold text-slate-100">Today's Attendance History</h2>
+            <h2 className="text-xl font-bold text-slate-100">Today's Attendance Sessions</h2>
           </div>
           <span className="text-xs font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping"></span>
@@ -822,7 +1172,7 @@ const formatISTTime = (time: string | null) => {
         {todayAttendance.length === 0 ? (
           <div className="text-center py-16 border border-dashed border-slate-800 rounded-xl bg-[#0B1528]/40">
             <MapPin className="w-12 h-12 text-slate-600 mx-auto mb-3 animate-bounce" />
-            <p className="text-slate-400 font-medium">No attendance records have been registered today.</p>
+            <p className="text-slate-400 font-medium">No attendance sessions have been registered today.</p>
             <p className="text-xs text-slate-600 mt-1">Use Mark Attendance above to record your check-in.</p>
           </div>
         ) : (
@@ -831,10 +1181,11 @@ const formatISTTime = (time: string | null) => {
               <thead>
                 <tr className="text-left text-slate-400 border-b border-slate-800 bg-[#0B1528]/80 text-xs font-semibold uppercase tracking-wider">
                   <th className="py-4 px-4 font-medium">Employee Name</th>
+                  <th className="py-4 px-4 font-medium">Site</th>
                   <th className="py-4 px-4 font-medium">Check In</th>
                   <th className="py-4 px-4 font-medium">Check Out</th>
-                  <th className="py-4 px-4 font-medium">Working Hours</th>
-                  <th className="py-4 px-4 font-medium">Status</th>
+                  <th className="py-4 px-4 font-medium">Session Hours</th>
+                  <th className="py-4 px-4 font-medium">Session Status</th>
                   <th className="py-4 px-4 font-medium text-center">Face</th>
                   <th className="py-4 px-4 font-medium text-center">GPS Coordinates</th>
                   {DEMO_MODE && <th className="py-4 px-4 font-medium text-right">Actions</th>}
@@ -842,9 +1193,10 @@ const formatISTTime = (time: string | null) => {
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {todayAttendance.map((record) => {
-                  const profile = profiles.find((item) => item.id === record.employee_id);
+                  const profile = profiles.find((item) => item.id === record.profile_id);
                   const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Profile";
                   const employeeCode = profile?.employee_code || "";
+                  const sessionHours = getSessionHours(record);
                   
                   return (
                     <tr key={record.id} className="hover:bg-[#13223D]/40 transition-all duration-150 group text-sm">
@@ -854,6 +1206,7 @@ const formatISTTime = (time: string | null) => {
                           {employeeCode && <span className="text-[11px] text-slate-500 font-mono mt-0.5">{employeeCode}</span>}
                         </div>
                       </td>
+                      <td className="py-4 px-4 text-slate-300 font-medium">{record.site_name_snapshot}</td>
                       <td className="py-4 px-4 text-slate-300">
                         <span className="inline-flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50"></span>
@@ -871,9 +1224,9 @@ const formatISTTime = (time: string | null) => {
                         )}
                       </td>
                       <td className="py-4 px-4 text-slate-300 font-medium font-mono">
-                        {record.working_hours !== null && record.working_hours !== undefined ? (
+                        {sessionHours !== null ? (
                           <span className="text-slate-200 font-bold bg-[#13223D] px-2.5 py-1 rounded border border-slate-700/50">
-                            {record.working_hours.toFixed(2)} hrs
+                            {formatDurationHours(sessionHours)}
                           </span>
                         ) : (
                           <span className="text-slate-500">-</span>
@@ -895,10 +1248,10 @@ const formatISTTime = (time: string | null) => {
                         )}
                       </td>
                       <td className="py-4 px-4 text-center">
-                        {record.latitude && record.longitude ? (
+                        {record.check_in_latitude && record.check_in_longitude ? (
                           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50 text-[11px] font-mono text-slate-400 group-hover:text-blue-400 transition-colors">
                             <MapPin className="w-3.5 h-3.5 text-blue-500" />
-                            {record.latitude.toFixed(4)}, {record.longitude.toFixed(4)}
+                            {record.check_in_latitude.toFixed(4)}, {record.check_in_longitude.toFixed(4)}
                           </span>
                         ) : (
                           <span className="text-slate-600 font-mono text-xs">-</span>

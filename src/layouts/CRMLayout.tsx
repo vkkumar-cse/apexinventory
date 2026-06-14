@@ -9,13 +9,20 @@ import apexLogo from "@/assets/apex-logo.jpeg";
 export function CRMLayout({ children }: { children: React.ReactNode }) {
   const { user, role, signOut, displayName, isAdmin } = useAuth();
 
-  const nav = [
-    { to: "/crm/dashboard", label: "Dashboard", icon: BarChart3, end: true },
-    { to: "/crm/leads", label: "Leads", icon: Handshake, end: false },
-    { to: "/crm/pipeline", label: "Pipeline", icon: KanbanSquare, end: true },
-    { to: "/crm/reports", label: "Reports", icon: FileText, end: true },
-    { to: "/crm/settings", label: "Settings", icon: Settings, end: true },
-  ];
+  const nav = isAdmin
+    ? [
+      { to: "/crm/dashboard", label: "Dashboard", icon: BarChart3, end: true },
+      { to: "/crm/leads", label: "Leads", icon: Handshake, end: false },
+      { to: "/crm/pipeline", label: "Pipeline", icon: KanbanSquare, end: true },
+      { to: "/crm/reports", label: "Reports", icon: FileText, end: true },
+      { to: "/crm/settings", label: "Settings", icon: Settings, end: true },
+    ]
+    : [
+      { to: "/crm/dashboard", label: "My Dashboard", icon: BarChart3, end: true },
+      { to: "/crm/leads", label: "My Leads", icon: Handshake, end: false },
+      { to: "/crm/pipeline", label: "Pipeline", icon: KanbanSquare, end: true },
+      { to: "/crm/my-followups", label: "My Follow-ups", icon: FileText, end: true },
+    ];
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -32,6 +32,14 @@ type Product = {
 type Tx = { id: string; type: string; quantity: number; created_at: string; note: string | null; user_id: string | null };
 type Related = { id: string; related_product_id: string; products: { id: string; code: number; part_no: string | null; name: string; stock: number; reorder_level: number } };
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 const qtySchema = z.coerce.number().int().positive().max(1000000);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,6 +58,8 @@ export default function ProductDetail() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [qrUrl, setQrUrl] = useState("");
+  const [labelQrUrl, setLabelQrUrl] = useState("");
+  const [qrLabelPreviewOpen, setQrLabelPreviewOpen] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Edit state
@@ -65,7 +75,9 @@ export default function ProductDetail() {
     labels: [] as ("OPTO" | "NPD")[],
   });
 
-const productIdentifier = product ? product.id : "";const productUrl = product ? `${window.location.origin}/product/${product.id}` : "";
+const productIdentifier = product ? (product.part_no ?? `#${product.code}`) : "";
+const productQrValue = product ? (product.part_no || String(product.code)) : "";
+const productUrl = product ? `${window.location.origin}/product/${product.part_no || product.code}` : "";
   useEffect(() => { if (routeParam) { document.title = "Product · Apex Software"; load(); } }, [routeParam]);
 
   useEffect(() => {
@@ -73,6 +85,19 @@ const productIdentifier = product ? product.id : "";const productUrl = product ?
     QRCode.toDataURL(productUrl, { width: 320, margin: 2, color: { dark: "#0f172a", light: "#ffffff" } }).then(setQrUrl);
     if (qrCanvasRef.current) QRCode.toCanvas(qrCanvasRef.current, productUrl, { width: 320, margin: 2 });
   }, [productUrl]);
+
+  useEffect(() => {
+    if (!productQrValue) {
+      setLabelQrUrl("");
+      return;
+    }
+
+    QRCode.toDataURL(productQrValue, {
+      width: 180,
+      margin: 0,
+      color: { dark: "#000000", light: "#ffffff" },
+    }).then(setLabelQrUrl);
+  }, [productQrValue]);
 
   async function load() {
     if (!routeParam) return;
@@ -157,6 +182,136 @@ setProductSuppliers(
       a.href = c.toDataURL("image/png"); a.click();
     };
     img.src = qrUrl;
+  }
+
+  const buildQrLabelHtml = (qrImageUrl: string) => {
+    if (!product) return "";
+    const category = [parentCat?.name, product.categories?.name].filter(Boolean).join(" / ") || product.type;
+    const partNumber = product.part_no ?? `#${product.code}`;
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <title>QR Label - ${escapeHtml(partNumber)}</title>
+          <style>
+            @page {
+              size: 40mm 25mm;
+              margin: 0;
+            }
+            * {
+              box-sizing: border-box;
+            }
+            html,
+            body {
+              margin: 0;
+              padding: 0;
+              width: 40mm;
+              height: 25mm;
+              background: #fff;
+              color: #000;
+              font-family: Arial, Helvetica, sans-serif;
+            }
+            .qr-label {
+              width: 40mm;
+              height: 25mm;
+              display: flex;
+              align-items: center;
+              gap: 2mm;
+              padding: 2mm 1.5mm;
+              overflow: hidden;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .qr-label img {
+              width: 18mm;
+              height: 18mm;
+              flex: 0 0 18mm;
+              display: block;
+            }
+            .qr-label__text {
+              min-width: 0;
+              flex: 1;
+              line-height: 1.1;
+            }
+            .qr-label__name {
+              display: -webkit-box;
+              -webkit-line-clamp: 2;
+              -webkit-box-orient: vertical;
+              overflow: hidden;
+              font-size: 8.5px;
+              font-weight: 700;
+              text-transform: uppercase;
+              word-break: break-word;
+            }
+            .qr-label__part,
+            .qr-label__category {
+              margin-top: 1mm;
+              overflow: hidden;
+              white-space: nowrap;
+              text-overflow: ellipsis;
+              font-size: 7px;
+            }
+            .qr-label__part {
+              font-weight: 600;
+            }
+            .qr-label__category {
+              text-transform: uppercase;
+            }
+            @media print {
+              html,
+              body,
+              .qr-label {
+                width: 40mm;
+                height: 25mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="qr-label">
+            <img src="${qrImageUrl}" alt="Product QR" />
+            <div class="qr-label__text">
+              <div class="qr-label__name">${escapeHtml(product.name)}</div>
+              <div class="qr-label__part">Part No: ${escapeHtml(partNumber)}</div>
+              ${category ? `<div class="qr-label__category">${escapeHtml(category)}</div>` : ""}
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  async function printQrLabel() {
+    if (!product || !productQrValue) return;
+
+    const qrImageUrl = labelQrUrl || await QRCode.toDataURL(productQrValue, {
+      width: 180,
+      margin: 0,
+      color: { dark: "#000000", light: "#ffffff" },
+    });
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.srcdoc = buildQrLabelHtml(qrImageUrl);
+    iframe.onload = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      window.setTimeout(() => iframe.remove(), 1000);
+    };
+    document.body.appendChild(iframe);
+  }
+
+  function openQrLabelPreview() {
+    if (!product || !productQrValue) {
+      toast.error("QR label is not ready");
+      return;
+    }
+    setQrLabelPreviewOpen(true);
   }
 
   async function addRelated(rid: string) {
@@ -259,6 +414,8 @@ setProductSuppliers(
 
   const status = stockStatus(product.stock, product.reorder_level);
   const lowRelated = related.filter(r => r.products && r.products.stock <= r.products.reorder_level);
+  const qrLabelCategory = [parentCat?.name, product.categories?.name].filter(Boolean).join(" / ") || product.type;
+  const qrLabelPartNumber = product.part_no ?? `#${product.code}`;
 
   // Structured fields
   const fields: { label: string; value: React.ReactNode }[] = [
@@ -293,6 +450,9 @@ setProductSuppliers(
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print Product Details</Button>
+          <Button variant="outline" size="sm" onClick={openQrLabelPreview}><Printer className="h-4 w-4 mr-1" />Preview QR Label</Button>
+          <Button variant="outline" size="sm" onClick={printQrLabel}><Printer className="h-4 w-4 mr-1" />Print QR Label</Button>
           <StockBadge stock={product.stock} reorder={product.reorder_level} />
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={openEdit}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
@@ -355,7 +515,8 @@ setProductSuppliers(
           <p className="text-[10px] text-muted-foreground font-mono break-all mt-1">{productUrl}</p>
           <div className="flex gap-2 mt-4 no-print">
             <Button variant="outline" size="sm" className="flex-1" onClick={downloadQR}><Download className="h-3 w-3 mr-1" />PNG</Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={() => window.print()}><Printer className="h-3 w-3 mr-1" />Print</Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={openQrLabelPreview}><Printer className="h-3 w-3 mr-1" />Preview</Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={printQrLabel}><Printer className="h-3 w-3 mr-1" />Print</Button>
           </div>
         </Card>
       </div>
@@ -436,6 +597,59 @@ setProductSuppliers(
           </div>
         </Card>
       </div>
+
+      <Dialog open={qrLabelPreviewOpen} onOpenChange={setQrLabelPreviewOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Preview QR Label</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border bg-slate-100 p-5 flex justify-center">
+              <div
+                className="bg-white text-black shadow-sm border border-slate-300 flex items-center overflow-hidden"
+                style={{ width: "40mm", height: "25mm", gap: "2mm", padding: "2mm 1.5mm" }}
+              >
+                {labelQrUrl ? (
+                  <img
+                    src={labelQrUrl}
+                    alt="Product QR"
+                    className="block shrink-0"
+                    style={{ width: "18mm", height: "18mm" }}
+                  />
+                ) : (
+                  <div className="shrink-0 bg-slate-200" style={{ width: "18mm", height: "18mm" }} />
+                )}
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div
+                    className="font-bold uppercase overflow-hidden"
+                    style={{
+                      fontSize: "8.5px",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {product.name}
+                  </div>
+                  <div className="mt-1 truncate font-semibold" style={{ fontSize: "7px" }}>
+                    Part No: {qrLabelPartNumber}
+                  </div>
+                  {qrLabelCategory && (
+                    <div className="mt-1 truncate uppercase" style={{ fontSize: "7px" }}>
+                      {qrLabelCategory}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setQrLabelPreviewOpen(false)}>Close</Button>
+              <Button onClick={printQrLabel}><Printer className="h-4 w-4 mr-2" />Print QR Label</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

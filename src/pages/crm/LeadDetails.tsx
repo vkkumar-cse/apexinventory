@@ -139,7 +139,8 @@ export default function LeadDetails() {
 
   async function saveLead(payload: Omit<LeadFormValue, "id">) {
     if (!lead) return;
-    const { error } = await (supabase as any).from("leads").update(payload).eq("id", lead.id);
+    const safePayload = isAdmin ? payload : { ...payload, assigned_to: user?.id ?? null, status: lead.status };
+    const { error } = await (supabase as any).from("leads").update(safePayload).eq("id", lead.id);
     if (error) throw error;
     toast.success("Lead updated successfully");
     await load();
@@ -302,11 +303,11 @@ export default function LeadDetails() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setLeadFormOpen(true)}><Pencil className="h-4 w-4 mr-2" />Edit</Button>
-          {lead.status !== "won" && <Button onClick={() => setStatusDialog("won")}><CheckCircle2 className="h-4 w-4 mr-2" />Mark Won</Button>}
-          {lead.status !== "lost" && <Button variant="destructive" onClick={() => setStatusDialog("lost")}><XCircle className="h-4 w-4 mr-2" />Mark Lost</Button>}
-          {lead.status !== "in_progress" && <Button variant="outline" onClick={reopenLead}><RotateCcw className="h-4 w-4 mr-2" />Reopen Lead</Button>}
-          <Button variant="outline" onClick={() => convertLead("customer")}>Convert To Customer</Button>
-          <Button variant="outline" onClick={() => convertLead("quotation")}>Convert To Quotation</Button>
+          {isAdmin && lead.status !== "won" && <Button onClick={() => setStatusDialog("won")}><CheckCircle2 className="h-4 w-4 mr-2" />Mark Won</Button>}
+          {isAdmin && lead.status !== "lost" && <Button variant="destructive" onClick={() => setStatusDialog("lost")}><XCircle className="h-4 w-4 mr-2" />Mark Lost</Button>}
+          {isAdmin && lead.status !== "in_progress" && <Button variant="outline" onClick={reopenLead}><RotateCcw className="h-4 w-4 mr-2" />Reopen Lead</Button>}
+          {isAdmin && <Button variant="outline" onClick={() => convertLead("customer")}>Convert To Customer</Button>}
+          {isAdmin && <Button variant="outline" onClick={() => convertLead("quotation")}>Convert To Quotation</Button>}
         </div>
       </div>
 

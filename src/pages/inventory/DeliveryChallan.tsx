@@ -786,6 +786,7 @@ function PrintPreview({
   const customer = customers.find((c) => c.id === dc.customer_id);
   const title = dc.returnable ? "Returnable Delivery Challan" : "Non-Returnable Delivery Challan";
   const printRef = useRef<HTMLDivElement>(null);
+  const itemPages = chunkItems(items, 8);
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
@@ -793,12 +794,11 @@ function PrintPreview({
     pageStyle: `
       @page {
         size: A4 portrait;
-        margin: 0;
-        padding: 0;
+        margin: 8mm;
       }
       body {
         margin: 0;
-        padding: 8mm;
+        padding: 0;
         background: white;
         color: black;
       }
@@ -808,54 +808,67 @@ function PrintPreview({
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent
-        className="max-w-[850px] p-0 border-none bg-white shadow-lg"
-        style={{ width: "210mm", minHeight: "297mm", boxSizing: "border-box" }}
+        className="max-w-[850px] p-0 border-none bg-white shadow-lg overflow-hidden"
+        style={{ width: "min(850px, 96vw)", maxHeight: "90vh", boxSizing: "border-box" }}
       >
         <style>{`
-          /* Single outer border wrapper - all content inside */
+          .print-preview-scroll {
+            max-height: calc(90vh - 73px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: #e5e7eb;
+            padding: 16px;
+            box-sizing: border-box;
+          }
+
           .print-preview-document {
-            width: 210mm;
+            width: 194mm;
+            max-width: 100%;
             background: white;
             color: black;
             display: flex;
             flex-direction: column;
-            border: 1px solid #000;
+            gap: 16px;
             box-sizing: border-box;
-            margin: 0;
             padding: 0;
-            page-break-inside: avoid;
+            margin: 0 auto;
           }
 
-          /* Inner content - no additional borders */
-          .print-preview-document .print-paper {
+          .print-preview-document .dc-print-page {
             width: 100%;
+            min-height: 281mm;
             background: white;
             color: black;
             display: flex;
             flex-direction: column;
-            page-break-inside: avoid;
-            padding: 0;
+            padding: 4mm;
             margin: 0;
             box-sizing: border-box;
-            border: none;
+            border: 1px solid #000;
+            page-break-inside: avoid;
+            overflow: hidden;
           }
 
-          /* Header section - bottom border only */
+          .print-preview-document .dc-print-page:not(:last-child) {
+            page-break-after: always;
+            break-after: page;
+          }
+
           .print-preview-document .print-header {
             width: 100%;
-            padding: 8mm;
+            padding: 6mm 8mm;
             border-bottom: 1px solid #000;
             text-align: center;
             flex-shrink: 0;
             box-sizing: border-box;
             background: white;
             color: black;
+            margin: 0;
           }
 
-          /* Title section - bottom border only */
           .print-preview-document .print-title {
             width: 100%;
-            padding: 4mm 8mm;
+            padding: 3mm 8mm;
             background-color: #f3f4f6;
             border-bottom: 1px solid #000;
             font-weight: bold;
@@ -864,24 +877,24 @@ function PrintPreview({
             text-transform: uppercase;
             flex-shrink: 0;
             box-sizing: border-box;
+            margin: 0;
           }
 
-          /* Customer section - grid with borders inside only */
           .print-preview-document .print-customer-section {
             width: 100%;
             display: grid;
             grid-template-columns: 60% 40%;
-            border-bottom: 1px solid #000;
+            border: 1px solid #000;
+            border-top: 0;
             flex-shrink: 0;
             box-sizing: border-box;
             margin: 0;
             padding: 0;
           }
 
-          /* Customer block - right border separator only */
           .print-preview-document .print-customer-block {
             width: 100%;
-            padding: 6mm 8mm;
+            padding: 5mm 8mm;
             border-right: 1px solid #000;
             font-size: 10pt;
             line-height: 1.4;
@@ -891,10 +904,9 @@ function PrintPreview({
             margin: 0;
           }
 
-          /* DC info block - no right border */
           .print-preview-document .print-dc-info-block {
             width: 100%;
-            padding: 6mm 8mm;
+            padding: 5mm 8mm;
             font-size: 10pt;
             display: flex;
             flex-direction: column;
@@ -905,14 +917,13 @@ function PrintPreview({
             margin: 0;
           }
 
-          /* Items table - contained within parent */
           .print-preview-document .print-table {
             width: 100%;
             border-collapse: collapse;
             display: table;
             table-layout: fixed;
             flex-shrink: 0;
-            border-bottom: 1px solid #000;
+            border: 1px solid #000;
             box-sizing: border-box;
             margin: 0;
             padding: 0;
@@ -922,7 +933,7 @@ function PrintPreview({
             background-color: #f3f4f6;
             font-weight: bold;
             border: 1px solid #000;
-            padding: 6mm 4mm;
+            padding: 3mm 3mm;
             text-align: center;
             font-size: 9pt;
             height: auto;
@@ -933,7 +944,7 @@ function PrintPreview({
 
           .print-preview-document .print-table td {
             border: 1px solid #000;
-            padding: 8mm 4mm;
+            padding: 2mm 3mm;
             vertical-align: top;
             font-size: 9pt;
             word-wrap: break-word;
@@ -941,7 +952,7 @@ function PrintPreview({
             color: black;
             background: white;
             display: table-cell;
-            height: auto;
+            height: 16mm;
             box-sizing: border-box;
           }
 
@@ -951,11 +962,11 @@ function PrintPreview({
             page-break-inside: avoid;
           }
 
-          /* Signature section - top border only */
           .print-preview-document .print-signature-area {
             width: 100%;
             padding: 6mm 8mm;
-            border-top: 1px solid #000;
+            border: 1px solid #000;
+            border-top: 0;
             font-size: 9pt;
             flex-shrink: 0;
             display: flex;
@@ -982,12 +993,32 @@ function PrintPreview({
           }
 
           @media print {
-            .print-preview-document {
-              border: 1px solid #000;
-              page-break-inside: avoid;
+            html,
+            body {
+              width: auto;
+              height: auto;
+              overflow: visible !important;
+              background: white !important;
             }
-            .print-preview-document .print-paper {
-              border: none;
+            .print-preview-scroll {
+              max-height: none !important;
+              overflow: visible !important;
+              padding: 0 !important;
+              background: white !important;
+            }
+            .print-preview-document {
+              width: 194mm;
+              max-width: none;
+              gap: 0;
+            }
+            .print-preview-document .dc-print-page {
+              width: 194mm;
+              min-height: 281mm;
+              padding: 4mm;
+              box-sizing: border-box;
+              border: 1px solid #000;
+              margin: 0;
+              page-break-inside: avoid;
             }
             .no-print {
               display: none !important;
@@ -995,8 +1026,21 @@ function PrintPreview({
           }
         `}</style>
         
-        <div className="print-preview-document" ref={printRef}>
-          <PrintContent dc={dc} items={items} products={products} customer={customer} title={title} />
+        <div className="print-preview-scroll">
+          <div className="print-preview-document" ref={printRef}>
+            {itemPages.map((pageItems, pageIndex) => (
+              <PrintContent
+                key={pageIndex}
+                dc={dc}
+                items={pageItems}
+                products={products}
+                customer={customer}
+                title={title}
+                startIndex={pageIndex * 8}
+                showSignature={pageIndex === itemPages.length - 1}
+              />
+            ))}
+          </div>
         </div>
         
         {/* Action Buttons */}
@@ -1011,21 +1055,35 @@ function PrintPreview({
   );
 }
 
+function chunkItems(items: DeliveryChallanItem[], size: number) {
+  const chunks: DeliveryChallanItem[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks.length > 0 ? chunks : [[]];
+}
+
 function PrintContent({
   dc,
   items,
   products,
   customer,
   title,
+  startIndex,
+  showSignature,
 }: {
   dc: DeliveryChallan;
   items: DeliveryChallanItem[];
   products: Product[];
   customer: Customer | undefined;
   title: string;
+  startIndex: number;
+  showSignature: boolean;
 }) {
+  const rows = [...items, ...Array<DeliveryChallanItem | null>(Math.max(0, 8 - items.length)).fill(null)];
+
   return (
-    <div className="print-paper">
+    <div className="dc-print-page">
       {/* Company Header */}
       <div className="print-header">
         <h1 className="text-lg font-bold uppercase tracking-wide">Metric Measurement Technologies</h1>
@@ -1092,13 +1150,23 @@ function PrintContent({
           </tr>
         </thead>
         <tbody>
-          {items.map((item, idx) => {
+          {rows.map((item, idx) => {
+            if (!item) {
+              return (
+                <tr key={`blank-${idx}`}>
+                  <td className="text-center">&nbsp;</td>
+                  <td className="align-top">&nbsp;</td>
+                  <td className="text-center align-top">&nbsp;</td>
+                  <td className="align-top">&nbsp;</td>
+                </tr>
+              );
+            }
             const prod = products.find((p) => p.id === item.product_id);
             const desc = item.item_name ?? prod?.name ?? "";
             const qtyUom = `${item.quantity} ${item.uom}`;
             return (
               <tr key={idx}>
-                <td className="text-center">{idx + 1}</td>
+                <td className="text-center">{startIndex + idx + 1}</td>
                 <td className="align-top">{desc}</td>
                 <td className="text-center align-top">{qtyUom}</td>
                 <td className="align-top">{item.remarks ?? ""}</td>
@@ -1109,18 +1177,20 @@ function PrintContent({
       </table>
 
       {/* Signature Area at bottom */}
-      <div className="print-signature-area">
-        <div className="print-sig-block">
-          <p className="text-[8pt] font-semibold">For METRIC MEASUREMENT TECHNOLOGIES</p>
-          <div className="print-sig-line"></div>
-          <p className="text-[7pt] text-gray-600">Authorized Signatory</p>
+      {showSignature && (
+        <div className="print-signature-area">
+          <div className="print-sig-block">
+            <p className="text-[8pt] font-semibold">For METRIC MEASUREMENT TECHNOLOGIES</p>
+            <div className="print-sig-line"></div>
+            <p className="text-[7pt] text-gray-600">Authorized Signatory</p>
+          </div>
+          <div className="print-sig-block">
+            <p className="text-[8pt] font-semibold">Receiver's Signature & Seal</p>
+            <div className="print-sig-line"></div>
+            <p className="text-[7pt] text-gray-600">Signature of Consignee</p>
+          </div>
         </div>
-        <div className="print-sig-block">
-          <p className="text-[8pt] font-semibold">Receiver's Signature & Seal</p>
-          <div className="print-sig-line"></div>
-          <p className="text-[7pt] text-gray-600">Signature of Consignee</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

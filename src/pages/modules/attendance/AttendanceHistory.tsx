@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, CheckCircle2, Clock, Loader2, MapPin, Trash2 } from "lucide-react";
+import { formatDurationHours } from "@/lib/formatDuration";
 
 type ProfileLite = {
   id: string;
@@ -16,18 +17,26 @@ type ProfileLite = {
 
 type AttendanceRecord = {
   id: string;
-  employee_id: string;
+  profile_id: string;
   attendance_date: string;
+  site_id: string | null;
+  site_name_snapshot: string;
   check_in: string | null;
   check_out: string | null;
-  working_hours: number | null;
   status: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  gps_verified: boolean | null;
-  distance_meters: number | null;
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  check_in_distance_meters: number | null;
+  check_out_distance_meters: number | null;
   face_verified: boolean | null;
   face_match_score: number | null;
+};
+
+type AttendanceSite = {
+  id: string;
+  site_name: string;
 };
 
 const formatISTTime = (time: string | null) => {
@@ -55,6 +64,14 @@ const getStatusBadge = (status: string | null) => {
     return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">Present</Badge>;
   }
 
+  if (statusValue === "open") {
+    return <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">Open</Badge>;
+  }
+
+  if (statusValue === "completed") {
+    return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">Completed</Badge>;
+  }
+
   if (statusValue === "late") {
     return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">Late</Badge>;
   }
@@ -70,42 +87,77 @@ export default function AttendanceHistory() {
   const { user, isAdmin } = useAuth();
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [profiles, setProfiles] = useState<ProfileLite[]>([]);
+  const [allProfiles, setAllProfiles] = useState<ProfileLite[]>([]);
+  const [sites, setSites] = useState<AttendanceSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [siteFilter, setSiteFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const profilesById = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
+
+  const getProfileLabel = (profile: ProfileLite) =>
+    [profile.full_name || profile.display_name || profile.email || "Unknown Employee", profile.employee_code]
+      .filter(Boolean)
+      .join(" - ");
+
+  const getSessionHours = (record: AttendanceRecord) => {
+    if (!record.check_in || !record.check_out) return null;
+    const diffMs = new Date(record.check_out).getTime() - new Date(record.check_in).getTime();
+    return Number(Math.max(0, diffMs / (1000 * 60 * 60)).toFixed(2));
+  };
 
   const loadAttendance = async () => {
     setLoading(true);
     try {
       const attendanceQuery = supabase
-        .from("attendance" as any)
-        .select("id, employee_id, attendance_date, check_in, check_out, working_hours, status, latitude, longitude, gps_verified, distance_meters, face_verified, face_match_score")
+        .from("attendance_sessions" as any)
+        .select("id, profile_id, attendance_date, site_id, site_name_snapshot, check_in, check_out, status, check_in_latitude, check_in_longitude, check_out_latitude, check_out_longitude, check_in_distance_meters, check_out_distance_meters, face_verified, face_match_score")
         .order("attendance_date", { ascending: false })
         .order("check_in", { ascending: false });
 
+      if (dateFrom) attendanceQuery.gte("attendance_date", dateFrom);
+      if (dateTo) attendanceQuery.lte("attendance_date", dateTo);
+      if (siteFilter !== "all") attendanceQuery.eq("site_id", siteFilter);
+
       const { data: attendanceRows, error: attendanceError } = isAdmin
-        ? await attendanceQuery
-        : await attendanceQuery.eq("employee_id", user?.id ?? "");
+        ? await (employeeFilter !== "all" ? attendanceQuery.eq("profile_id", employeeFilter) : attendanceQuery)
+        : await attendanceQuery.eq("profile_id", user?.id ?? "");
 
       if (attendanceError) throw attendanceError;
 
       const nextAttendance = (attendanceRows ?? []) as unknown as AttendanceRecord[];
       setAttendance(nextAttendance);
 
-      const profileIds = Array.from(new Set(nextAttendance.map((record) => record.employee_id)));
-      if (profileIds.length === 0) {
-        setProfiles([]);
-        return;
-      }
-
-      const { data: profileRows, error: profileError } = await supabase
-        .from("profiles" as any)
-        .select("id, employee_code, full_name, display_name, email")
-        .in("id", profileIds);
+      const profileIds = Array.from(new Set(nextAttendance.map((record) => record.profile_id)));
+      const [{ data: profileRows, error: profileError }, { data: allProfileRows, error: allProfilesError }, { data: siteRows, error: sitesError }] = await Promise.all([
+        profileIds.length > 0
+          ? supabase
+            .from("profiles" as any)
+            .select("id, employee_code, full_name, display_name, email")
+            .in("id", profileIds)
+          : Promise.resolve({ data: [], error: null }),
+        isAdmin
+          ? supabase
+            .from("profiles" as any)
+            .select("id, employee_code, full_name, display_name, email")
+            .eq("status", "approved")
+            .order("full_name", { ascending: true })
+          : Promise.resolve({ data: [], error: null }),
+        (supabase as any)
+          .from("attendance_sites")
+          .select("id, site_name")
+          .order("site_name", { ascending: true }),
+      ]);
 
       if (profileError) throw profileError;
+      if (allProfilesError) throw allProfilesError;
+      if (sitesError) throw sitesError;
       setProfiles((profileRows ?? []) as unknown as ProfileLite[]);
+      setAllProfiles((allProfileRows ?? []) as unknown as ProfileLite[]);
+      setSites((siteRows ?? []) as AttendanceSite[]);
     } catch (error: any) {
       toast.error(error?.message || "Failed to load attendance history");
     } finally {
@@ -115,7 +167,7 @@ export default function AttendanceHistory() {
 
   const deleteAttendanceRecord = async (recordId: string) => {
     const { error } = await supabase
-      .from("attendance" as any)
+      .from("attendance_sessions" as any)
       .delete()
       .eq("id", recordId);
 
@@ -141,7 +193,7 @@ export default function AttendanceHistory() {
   useEffect(() => {
     document.title = "Attendance History · Apex Software";
     loadAttendance();
-  }, [isAdmin, user?.id]);
+  }, [isAdmin, user?.id, employeeFilter, siteFilter, dateFrom, dateTo]);
 
   return (
     <div className="p-4 md:p-8 space-y-6 text-white min-h-[calc(100vh-100px)] bg-[#0B1528] rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden">
@@ -155,12 +207,62 @@ export default function AttendanceHistory() {
             Attendance History
           </h1>
           <p className="text-slate-400 mt-1">
-            {isAdmin ? "Review all attendance records across employees." : "Review your attendance records and timesheets."}
+            {isAdmin ? "Review all attendance sessions across employees and sites." : "Review your attendance sessions and timesheets."}
           </p>
         </div>
         <Badge className={isAdmin ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-slate-800 text-slate-300 border border-slate-700"}>
           {isAdmin ? "Admin View" : "Worker View"}
         </Badge>
+      </div>
+
+      <div className="relative z-10 grid gap-3 rounded-2xl border border-slate-800/80 bg-[#13223D]/40 p-4 md:grid-cols-4">
+        {isAdmin && (
+          <select
+            value={employeeFilter}
+            onChange={(event) => setEmployeeFilter(event.target.value)}
+            className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
+          >
+            <option value="all">All employees</option>
+            {allProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>{getProfileLabel(profile)}</option>
+            ))}
+          </select>
+        )}
+        <select
+          value={siteFilter}
+          onChange={(event) => setSiteFilter(event.target.value)}
+          className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
+        >
+          <option value="all">All sites</option>
+          {sites.map((site) => (
+            <option key={site.id} value={site.id}>{site.site_name}</option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(event) => setDateFrom(event.target.value)}
+          className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
+        />
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(event) => setDateTo(event.target.value)}
+          className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setEmployeeFilter("all");
+            setSiteFilter("all");
+            setDateFrom("");
+            setDateTo("");
+          }}
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 md:col-span-4"
+        >
+          Clear Filters
+        </Button>
       </div>
 
       <div className="relative z-10 bg-[#13223D]/40 border border-slate-800/80 rounded-2xl p-6 shadow-2xl backdrop-blur-sm">
@@ -180,6 +282,7 @@ export default function AttendanceHistory() {
                 <tr className="text-left text-slate-400 border-b border-slate-800 bg-[#0B1528]/80 text-xs font-semibold uppercase tracking-wider">
                   <th className="py-4 px-4 font-medium">Employee</th>
                   <th className="py-4 px-4 font-medium">Date</th>
+                  <th className="py-4 px-4 font-medium">Site</th>
                   <th className="py-4 px-4 font-medium">Check In</th>
                   <th className="py-4 px-4 font-medium">Check Out</th>
                   <th className="py-4 px-4 font-medium">Hours</th>
@@ -190,9 +293,10 @@ export default function AttendanceHistory() {
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {attendance.map((record) => {
-                  const profile = profilesById.get(record.employee_id);
+                  const profile = profilesById.get(record.profile_id);
                   const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Employee";
                   const employeeCode = profile?.employee_code || "";
+                  const sessionHours = getSessionHours(record);
 
                   return (
                     <tr key={record.id} className="hover:bg-[#13223D]/40 transition-all duration-150 text-sm">
@@ -203,10 +307,11 @@ export default function AttendanceHistory() {
                         </div>
                       </td>
                       <td className="py-4 px-4 text-slate-300 font-medium">{formatDate(record.attendance_date)}</td>
+                      <td className="py-4 px-4 text-slate-300 font-medium">{record.site_name_snapshot || "-"}</td>
                       <td className="py-4 px-4 text-slate-300 font-mono">{formatISTTime(record.check_in)}</td>
                       <td className="py-4 px-4 text-slate-300 font-mono">{formatISTTime(record.check_out)}</td>
                       <td className="py-4 px-4 text-slate-300 font-mono">
-                        {record.working_hours !== null && record.working_hours !== undefined ? `${record.working_hours.toFixed(2)} hrs` : "-"}
+                        {sessionHours !== null ? formatDurationHours(sessionHours) : "-"}
                       </td>
                       <td className="py-4 px-4">{getStatusBadge(record.status)}</td>
                       <td className="py-4 px-4">
@@ -219,10 +324,10 @@ export default function AttendanceHistory() {
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             {record.face_verified ? `Face ${record.face_match_score !== null && record.face_match_score !== undefined ? Math.round(record.face_match_score * 100) + "%" : "Verified"}` : "Face Pending"}
                           </span>
-                          {record.latitude !== null && record.longitude !== null && (
+                          {record.check_in_latitude !== null && record.check_in_longitude !== null && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-500">
                               <MapPin className="w-3 h-3 text-blue-500" />
-                              {record.latitude.toFixed(4)}, {record.longitude.toFixed(4)}
+                              {record.check_in_latitude.toFixed(4)}, {record.check_in_longitude.toFixed(4)}
                             </span>
                           )}
                         </div>

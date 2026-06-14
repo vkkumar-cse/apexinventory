@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
+import { formatDurationHours } from "@/lib/formatDuration";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,11 +30,12 @@ type SummaryStats = {
   halfDay: number;
   leave: number;
   total: number;
+  activeSessions: number;
 };
 
 type RecentCheckIn = {
   id: string;
-  employee_id: string;
+  profile_id: string;
   name: string;
   code: string;
   time: string;
@@ -42,6 +44,7 @@ type RecentCheckIn = {
   longitude: number | null;
   face_verified: boolean | null;
   face_match_score: number | null;
+  site_name_snapshot: string | null;
 };
 
 type ProfileLite = {
@@ -63,13 +66,40 @@ type AttendanceRecord = {
   longitude: number | null;
   face_verified: boolean | null;
   face_match_score: number | null;
+  site_id: string | null;
+  site_name_snapshot: string | null;
 };
 
-type DashboardRow = AttendanceRecord & {
+type AttendanceSession = {
+  id: string;
+  profile_id: string;
+  attendance_date: string;
+  site_id: string | null;
+  site_name_snapshot: string;
+  check_in: string;
+  check_out: string | null;
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  face_verified: boolean | null;
+  face_match_score: number | null;
+  status: string | null;
+};
+
+type WorkerAttendanceSite = {
+  id: string;
+  site_name: string;
+  radius_meters: number;
+  is_active: boolean;
+  is_default: boolean;
+};
+
+type DashboardRow = AttendanceSession & {
   profile?: ProfileLite | null;
 };
 
-type WorkerTodayAttendance = Pick<AttendanceRecord, "check_in" | "check_out" | "status" | "face_verified" | "face_match_score">;
+type WorkerTodayAttendance = Pick<AttendanceRecord, "check_in" | "check_out" | "status" | "face_verified" | "face_match_score" | "site_name_snapshot">;
 
 type WorkerMonthlyAttendance = {
   status: string | null;
@@ -82,8 +112,12 @@ export default function AttendanceDashboard() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<SummaryStats>({ present: 0, absent: 0, late: 0, halfDay: 0, leave: 0, total: 0 });
+  const [now, setNow] = useState(() => new Date());
+  const [stats, setStats] = useState<SummaryStats>({ present: 0, absent: 0, late: 0, halfDay: 0, leave: 0, total: 0, activeSessions: 0 });
   const [recentCheckIns, setRecentCheckIns] = useState<RecentCheckIn[]>([]);
+  const [siteSummary, setSiteSummary] = useState<{ siteName: string; employeesPresent: number; totalHours: number; activeSessions: number }[]>([]);
+  const [workerTodaySessions, setWorkerTodaySessions] = useState<AttendanceSession[]>([]);
+  const [workerAssignedSites, setWorkerAssignedSites] = useState<WorkerAttendanceSite[]>([]);
   
   // Worker-specific dashboard states
   const [workerTodayStatus, setWorkerTodayStatus] = useState<{
@@ -94,6 +128,7 @@ export default function AttendanceDashboard() {
     status: string | null;
     faceVerified: boolean;
     faceMatchScore: number | null;
+    siteName: string | null;
   }>({
     checkedIn: false,
     checkInTime: null,
@@ -102,6 +137,7 @@ export default function AttendanceDashboard() {
     status: null,
     faceVerified: false,
     faceMatchScore: null,
+    siteName: null,
   });
   const [workerSummary, setWorkerSummary] = useState({
     presentDays: 0,
@@ -124,6 +160,30 @@ export default function AttendanceDashboard() {
     document.title = "Attendance Dashboard · Apex Software";
     loadDashboardData();
   }, [role, user?.id]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const getSessionHours = (session: AttendanceSession) => {
+    if (!session.check_out) return 0;
+    const diffMs = new Date(session.check_out).getTime() - new Date(session.check_in).getTime();
+    return Math.max(0, diffMs / (1000 * 60 * 60));
+  };
+
+  const formatHours = formatDurationHours;
+
+  const formatTime = (time: string | null) =>
+    time ? new Date(time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-";
+
+  const workerCompletedSessions = workerTodaySessions.filter((session) => Boolean(session.check_out));
+  const workerActiveSession = workerTodaySessions.find((session) => !session.check_out && session.status === "open") ?? null;
+  const workerLastCompletedSession = workerCompletedSessions[workerCompletedSessions.length - 1] ?? null;
+  const workerTodayTotalHours = workerCompletedSessions.reduce((total, session) => total + getSessionHours(session), 0);
+  const workerActiveDuration = workerActiveSession
+    ? Math.max(0, (now.getTime() - new Date(workerActiveSession.check_in).getTime()) / (1000 * 60 * 60))
+    : 0;
 
   async function loadDashboardData() {
     setLoading(true);
@@ -151,34 +211,43 @@ export default function AttendanceDashboard() {
         const totalActiveCount = activeProfiles.length;
 
         // Fetch today's check-ins — cast to any[] to bypass broken schema types
-        const { data: checkinsRaw, error: attErr } = await supabase
-          .from("attendance" as any)
-          .select("id, employee_id, attendance_date, check_in, check_out, status, latitude, longitude, face_verified, face_match_score")
-          .eq("attendance_date", today);
+        const [{ data: dailyRaw, error: attErr }, { data: sessionsRaw, error: sessionsError }] = await Promise.all([
+          supabase
+            .from("attendance" as any)
+            .select("id, employee_id, attendance_date, check_in, check_out, status, latitude, longitude, face_verified, face_match_score, site_id, site_name_snapshot")
+            .eq("attendance_date", today),
+          (supabase as any)
+            .from("attendance_sessions")
+            .select("id, profile_id, attendance_date, site_id, site_name_snapshot, check_in, check_out, check_in_latitude, check_in_longitude, check_out_latitude, check_out_longitude, face_verified, face_match_score, status")
+            .eq("attendance_date", today)
+            .order("check_in", { ascending: false }),
+        ]);
         
         if (attErr) throw attErr;
-        const checkins = (checkinsRaw ?? []) as unknown as AttendanceRecord[];
+        if (sessionsError) throw sessionsError;
+        const dailyRows = (dailyRaw ?? []) as unknown as AttendanceRecord[];
+        const sessions = (sessionsRaw ?? []) as unknown as AttendanceSession[];
         const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
-        const dashboardRows: DashboardRow[] = checkins.map((attendance) => ({
-          ...attendance,
-          profile: profilesById.get(attendance.employee_id) ?? null,
+        const dashboardRows: DashboardRow[] = sessions.map((session) => ({
+          ...session,
+          profile: profilesById.get(session.profile_id) ?? null,
         }));
 
         // Compute stats
-        let present = 0;
+        const completedEmployeeIds = new Set(sessions.filter((session) => Boolean(session.check_out)).map((session) => session.profile_id));
+        const activeSessionCount = sessions.filter((session) => !session.check_out && session.status === "open").length;
         let late = 0;
         let halfDay = 0;
         let leave = 0; // Placeholder for leave
 
-        dashboardRows.forEach((c) => {
+        dailyRows.forEach((c) => {
           const status = (c.status || "present").toLowerCase();
-          if (status === "present") present++;
-          else if (status === "late") late++;
+          if (status === "late") late++;
           else if (status === "half-day") halfDay++;
         });
 
-        const activeCheckinEmployeeIds = new Set(dashboardRows.map((c) => c.employee_id));
-        const absent = Math.max(0, totalActiveCount - activeCheckinEmployeeIds.size - leave);
+        const present = completedEmployeeIds.size;
+        const absent = Math.max(0, totalActiveCount - present - leave);
 
         setStats({
           present,
@@ -186,26 +255,45 @@ export default function AttendanceDashboard() {
           late,
           halfDay,
           leave,
-          total: totalActiveCount
+          total: totalActiveCount,
+          activeSessions: activeSessionCount,
         });
 
         // Format recent activity from profile-backed attendance rows.
         const recent: RecentCheckIn[] = dashboardRows.slice(0, 5).map((c) => {
           return {
             id: c.id,
-            employee_id: c.employee_id,
+            profile_id: c.profile_id,
             name: c.profile?.full_name || "Unknown Employee",
             code: c.profile?.employee_code || "",
-            time: c.check_in ? new Date(c.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-",
+            time: formatTime(c.check_in),
             status: c.status || "present",
-            latitude: c.latitude,
-            longitude: c.longitude,
+            latitude: c.check_in_latitude,
+            longitude: c.check_in_longitude,
             face_verified: c.face_verified,
-            face_match_score: c.face_match_score
+            face_match_score: c.face_match_score,
+            site_name_snapshot: c.site_name_snapshot ?? null,
           };
         });
 
         setRecentCheckIns(recent);
+        const siteMap = dashboardRows.reduce<Record<string, { employeeIds: Set<string>; totalHours: number; activeSessions: number }>>((acc, row) => {
+          const siteName = row.site_name_snapshot || "Main Office";
+          acc[siteName] ??= { employeeIds: new Set<string>(), totalHours: 0, activeSessions: 0 };
+          if (row.check_out) {
+            acc[siteName].employeeIds.add(row.profile_id);
+            acc[siteName].totalHours += getSessionHours(row);
+          } else if (row.status === "open") {
+            acc[siteName].activeSessions += 1;
+          }
+          return acc;
+        }, {});
+        setSiteSummary(Object.entries(siteMap).map(([siteName, value]) => ({
+          siteName,
+          employeesPresent: value.employeeIds.size,
+          totalHours: Number(value.totalHours.toFixed(2)),
+          activeSessions: value.activeSessions,
+        })));
 
         const { data: payrollRaw } = await supabase
           .from("monthly_payroll" as any)
@@ -221,17 +309,52 @@ export default function AttendanceDashboard() {
 
       } else {
         // --- WORKER DASHBOARD DATA ---
-        setWorkerTodayStatus({ checkedIn: false, checkInTime: null, checkedOut: false, checkOutTime: null, status: null, faceVerified: false, faceMatchScore: null });
+        setWorkerTodayStatus({ checkedIn: false, checkInTime: null, checkedOut: false, checkOutTime: null, status: null, faceVerified: false, faceMatchScore: null, siteName: null });
         setWorkerSummary({ presentDays: 0, lateDays: 0, halfDays: 0, totalWorkingHours: 0 });
         setPayrollSummary({ generatedRows: 0, totalPayable: 0, myPayable: 0 });
+        setWorkerTodaySessions([]);
+        setWorkerAssignedSites([]);
 
         if (user?.id) {
           const profileId = user.id;
+          const { data: assignmentsRaw, error: assignmentsError } = await (supabase as any)
+            .from("employee_site_assignments")
+            .select("attendance_sites(id,site_name,radius_meters,is_active,is_default)")
+            .eq("profile_id", profileId);
+
+          if (assignmentsError) throw assignmentsError;
+
+          const assignedSites = ((assignmentsRaw ?? []) as any[])
+            .map((row) => row.attendance_sites)
+            .filter((site): site is WorkerAttendanceSite => Boolean(site?.id));
+
+          if (assignedSites.length > 0) {
+            setWorkerAssignedSites(assignedSites);
+          } else {
+            const { data: defaultSite, error: defaultSiteError } = await (supabase as any)
+              .from("attendance_sites")
+              .select("id,site_name,radius_meters,is_active,is_default")
+              .eq("is_default", true)
+              .maybeSingle();
+
+            if (defaultSiteError) throw defaultSiteError;
+            setWorkerAssignedSites(defaultSite ? [defaultSite as WorkerAttendanceSite] : []);
+          }
+
+          const { data: todaySessionsRaw, error: todaySessionsError } = await (supabase as any)
+            .from("attendance_sessions")
+            .select("id, profile_id, attendance_date, site_id, site_name_snapshot, check_in, check_out, check_in_latitude, check_in_longitude, check_out_latitude, check_out_longitude, face_verified, face_match_score, status")
+            .eq("profile_id", profileId)
+            .eq("attendance_date", today)
+            .order("check_in", { ascending: true });
+
+          if (todaySessionsError) throw todaySessionsError;
+          setWorkerTodaySessions((todaySessionsRaw ?? []) as AttendanceSession[]);
           // Resolve worker employee record (UUID) — cast to any
             // Fetch today's attendance — cast to any
             const { data: todayRaw } = await supabase
               .from("attendance" as any)
-              .select("check_in, check_out, status, face_verified, face_match_score")
+              .select("check_in, check_out, status, face_verified, face_match_score, site_name_snapshot")
               .eq("employee_id", profileId)
               .eq("attendance_date", today)
               .maybeSingle();
@@ -246,7 +369,8 @@ export default function AttendanceDashboard() {
                 checkOutTime: todayRecords.check_out ? new Date(todayRecords.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : null,
                 status: todayRecords.status || "present",
                 faceVerified: !!todayRecords.face_verified,
-                faceMatchScore: todayRecords.face_match_score ?? null
+                faceMatchScore: todayRecords.face_match_score ?? null,
+                siteName: todayRecords.site_name_snapshot ?? null,
               });
             }
 
@@ -269,6 +393,7 @@ export default function AttendanceDashboard() {
                 if (s === "present") presentDays++;
                 else if (s === "late") lateDays++;
                 else if (s === "half-day") halfDays++;
+                else if (s === "absent") return;
 
                 if (r.working_hours) hours += Number(r.working_hours);
               });
@@ -308,6 +433,9 @@ export default function AttendanceDashboard() {
     if (s === "present") return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">Present</Badge>;
     if (s === "late") return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">Late Mark</Badge>;
     if (s === "half-day") return <Badge className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs">Half Day</Badge>;
+    if (s === "absent") return <Badge className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs">Absent</Badge>;
+    if (s === "open") return <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">Open</Badge>;
+    if (s === "completed") return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">Completed</Badge>;
     return <Badge>{status}</Badge>;
   };
 
@@ -357,7 +485,7 @@ export default function AttendanceDashboard() {
         // ==========================================
         <div className="space-y-6 relative z-10">
           {/* Metrics summary */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <Card className="bg-slate-900/60 border-slate-800 text-white">
               <CardHeader className="p-4 pb-2">
                 <CardDescription className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Today Present</CardDescription>
@@ -400,6 +528,16 @@ export default function AttendanceDashboard() {
 
             <Card className="bg-slate-900/60 border-slate-800 text-white">
               <CardHeader className="p-4 pb-2">
+                <CardDescription className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Active Sessions</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 flex justify-between items-end">
+                <span className="text-3xl font-extrabold text-blue-400">{stats.activeSessions}</span>
+                <Clock className="h-5 w-5 text-blue-500" />
+              </CardContent>
+            </Card>
+
+            <Card className="bg-slate-900/60 border-slate-800 text-white">
+              <CardHeader className="p-4 pb-2">
                 <CardDescription className="text-xs text-slate-400 font-semibold uppercase tracking-wider">On Leave</CardDescription>
               </CardHeader>
               <CardContent className="p-4 pt-0 flex justify-between items-end">
@@ -430,6 +568,7 @@ export default function AttendanceDashboard() {
                         <div>
                           <div className="font-semibold text-slate-200">{c.name}</div>
                         <div className="text-xs text-slate-500 font-mono">{c.code} | Checked in at {c.time}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">Site: {c.site_name_snapshot || "Main Office"}</div>
                         <div className="mt-1">{getFaceBadge(c.face_verified, c.face_match_score)}</div>
                           {c.latitude && (
                             <div className="text-[10px] text-slate-550 flex items-center gap-0.5 mt-0.5">
@@ -457,15 +596,16 @@ export default function AttendanceDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4 text-xs text-slate-500 space-y-2">
-                  <div className="p-3 bg-[#0B1528] border border-slate-800 rounded-xl">
-                    <span className="font-semibold text-slate-350 block">HQ Operations</span>
-                    <span className="text-[10px] text-slate-500">0 checked in</span>
-                  </div>
-                  <div className="p-3 bg-[#0B1528] border border-slate-800 rounded-xl">
-                    <span className="font-semibold text-slate-350 block">Warehouse Area A</span>
-                    <span className="text-[10px] text-slate-500">0 checked in</span>
-                  </div>
-                  <p className="text-[10px] text-slate-550 text-center italic">Future Feature: Assign sites & view live counters</p>
+                  {siteSummary.length === 0 ? (
+                    <p className="text-center py-4">No site check-ins today.</p>
+                  ) : siteSummary.map((site) => (
+                    <div key={site.siteName} className="p-3 bg-[#0B1528] border border-slate-800 rounded-xl">
+                      <span className="font-semibold text-slate-300 block">{site.siteName}</span>
+                      <span className="text-[10px] text-slate-500 block">{site.employeesPresent} employees present</span>
+                      <span className="text-[10px] text-slate-500 block">{formatHours(site.totalHours)} total</span>
+                      <span className="text-[10px] text-blue-400 block">{site.activeSessions} active sessions</span>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
 
@@ -529,20 +669,30 @@ export default function AttendanceDashboard() {
 
                     <div className="space-y-3 my-4">
                       <div className="flex justify-between py-2 border-b border-slate-800">
-                        <span className="text-slate-400 text-sm">Today Status:</span>
-                        <span className="font-medium">{workerTodayStatus.checkedIn ? getStatusBadge(workerTodayStatus.status) : <Badge variant="secondary" className="text-xs bg-slate-850">Not Checked In</Badge>}</span>
+                        <span className="text-slate-400 text-sm">Status:</span>
+                        <span className="font-medium">
+                          {workerActiveSession
+                            ? <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">Checked In</Badge>
+                            : workerTodayStatus.checkedIn
+                              ? getStatusBadge(workerTodayStatus.status)
+                              : <Badge variant="secondary" className="text-xs bg-slate-850">Not checked in today</Badge>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-slate-800">
+                        <span className="text-slate-400 text-sm">Today's Total:</span>
+                        <span className="font-mono text-slate-100 text-sm font-bold">{formatHours(workerTodayTotalHours)}</span>
                       </div>
                       <div className="flex justify-between py-2 border-b border-slate-800">
                         <span className="text-slate-400 text-sm">Face Verified:</span>
                         <span className="font-medium">{getFaceBadge(workerTodayStatus.faceVerified, workerTodayStatus.faceMatchScore)}</span>
                       </div>
                       <div className="flex justify-between py-2 border-b border-slate-800">
-                        <span className="text-slate-400 text-sm">Check In Time:</span>
-                        <span className="font-mono text-slate-200 text-sm">{workerTodayStatus.checkInTime || "-"}</span>
+                        <span className="text-slate-400 text-sm">Current Active Site:</span>
+                        <span className="text-slate-200 text-sm">{workerActiveSession?.site_name_snapshot || "-"}</span>
                       </div>
                       <div className="flex justify-between py-2">
-                        <span className="text-slate-400 text-sm">Check Out Time:</span>
-                        <span className="font-mono text-slate-200 text-sm">{workerTodayStatus.checkOutTime || "-"}</span>
+                        <span className="text-slate-400 text-sm">Running Duration:</span>
+                        <span className="font-mono text-slate-200 text-sm">{workerActiveSession ? formatHours(workerActiveDuration) : "-"}</span>
                       </div>
                     </div>
                   </div>
@@ -585,25 +735,96 @@ export default function AttendanceDashboard() {
                   </div>
                 </Card>
 
-                {/* Assigned Site placeholder */}
+                {/* Assigned sites and session context */}
                 <Card className="bg-slate-900/50 border-slate-800 text-white shadow-xl p-6 flex flex-col justify-between">
                   <div>
                     <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 mb-4">
                       <MapPin className="w-5 h-5 text-emerald-450" />
-                      Assigned Location
+                      Assigned Sites
                     </h3>
 
-                    <div className="p-4 bg-[#0B1528] border border-slate-850 rounded-xl text-center space-y-1 my-4">
-                      <span className="font-bold text-slate-200 block">Default Office HQ</span>
-                      <span className="text-xs text-slate-400 block font-mono">Radius Limit: 100 meters</span>
+                    <div className="space-y-2 my-4">
+                      {workerAssignedSites.length === 0 ? (
+                        <div className="p-3 bg-[#0B1528] border border-slate-850 rounded-xl text-sm text-slate-500">
+                          No attendance sites available.
+                        </div>
+                      ) : workerAssignedSites.map((site) => (
+                        <div key={site.id} className="p-3 bg-[#0B1528] border border-slate-850 rounded-xl">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-100">{site.site_name}{site.is_default ? " (Default)" : ""}</span>
+                            <Badge className={site.is_active ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]" : "bg-slate-800 text-slate-400 border border-slate-700 text-[10px]"}>
+                              {site.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">Radius: {site.radius_meters}m</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-2 rounded-xl border border-slate-850 bg-[#0B1528]/60 p-3 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">Status</span>
+                        <span className="text-slate-200">{workerActiveSession ? "Checked in" : workerTodayStatus.checkedIn ? workerTodayStatus.status || "Completed" : "Not checked in today"}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">Current Active Site</span>
+                        <span className="text-slate-200">{workerActiveSession?.site_name_snapshot || "-"}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">Check-In Time</span>
+                        <span className="font-mono text-slate-200">{workerActiveSession ? formatTime(workerActiveSession.check_in) : "-"}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">Running Duration</span>
+                        <span className="font-mono text-slate-200">{workerActiveSession ? formatHours(workerActiveDuration) : "-"}</span>
+                      </div>
+                      <div className="flex justify-between gap-3 border-t border-slate-800 pt-2">
+                        <span className="text-slate-400">Last Completed Session</span>
+                        <span className="text-slate-200">{workerLastCompletedSession?.site_name_snapshot || "-"}</span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-slate-400">Hours Worked</span>
+                        <span className="font-mono text-slate-200">
+                          {workerLastCompletedSession ? formatHours(getSessionHours(workerLastCompletedSession)) : "-"}
+                        </span>
+                      </div>
+                      {workerLastCompletedSession && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-400">Validated Site</span>
+                          <span className="text-slate-200">{workerLastCompletedSession.site_name_snapshot}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  
-                  <p className="text-[10px] text-slate-500 text-center italic mt-4">
-                    Assigned sites are managed centrally by the operations admin.
-                  </p>
                 </Card>
               </div>
+
+              <Card className="bg-slate-900/50 border-slate-800 text-white shadow-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                    <History className="w-5 h-5 text-blue-400" />
+                    Completed Sessions Today
+                  </h3>
+                  <span className="text-sm font-mono text-slate-300">Total: {formatHours(workerTodayTotalHours)}</span>
+                </div>
+                {workerCompletedSessions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-800 bg-[#0B1528]/60 p-6 text-center text-sm text-slate-500">
+                    No completed sessions today.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800/70 rounded-xl border border-slate-800 bg-[#0B1528]/60">
+                    {workerCompletedSessions.map((session) => (
+                      <div key={session.id} className="grid gap-2 p-4 text-sm md:grid-cols-[1.4fr_1fr_auto] md:items-center">
+                        <div className="font-semibold text-slate-100">{session.site_name_snapshot}</div>
+                        <div className="font-mono text-slate-300">
+                          {formatTime(session.check_in)}{" -> "}{formatTime(session.check_out)}
+                        </div>
+                        <div className="font-mono font-bold text-emerald-400">{formatHours(getSessionHours(session))}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
 
               <Card className="bg-slate-900/50 border-slate-800 text-white shadow-xl p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

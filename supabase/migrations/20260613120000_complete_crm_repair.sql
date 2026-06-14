@@ -370,3 +370,199 @@ DROP POLICY IF EXISTS "Authenticated users can insert lead activities" ON public
 CREATE POLICY "Authenticated users can insert lead activities"
   ON public.crm_lead_activities FOR INSERT TO authenticated
   WITH CHECK (true);
+
+-- ============== ROLE-BASED CRM ACCESS REPAIR ==============
+
+ALTER TABLE public.crm_pipelines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crm_stages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crm_lead_sources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crm_followups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crm_lead_activities ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "CRM pipelines viewable by CRM users" ON public.crm_pipelines;
+DROP POLICY IF EXISTS "Admins manage CRM pipelines" ON public.crm_pipelines;
+CREATE POLICY "CRM pipelines viewable by CRM users"
+  ON public.crm_pipelines FOR SELECT TO authenticated
+  USING (
+    public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  );
+CREATE POLICY "Admins manage CRM pipelines"
+  ON public.crm_pipelines FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+
+DROP POLICY IF EXISTS "CRM stages viewable by authenticated" ON public.crm_stages;
+DROP POLICY IF EXISTS "CRM stages viewable by CRM users" ON public.crm_stages;
+DROP POLICY IF EXISTS "CRM users manage stages" ON public.crm_stages;
+DROP POLICY IF EXISTS "Admins manage CRM stages" ON public.crm_stages;
+CREATE POLICY "CRM stages viewable by CRM users"
+  ON public.crm_stages FOR SELECT TO authenticated
+  USING (
+    public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  );
+CREATE POLICY "Admins manage CRM stages"
+  ON public.crm_stages FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+
+DROP POLICY IF EXISTS "CRM lead sources viewable by authenticated" ON public.crm_lead_sources;
+DROP POLICY IF EXISTS "CRM lead sources viewable by CRM users" ON public.crm_lead_sources;
+DROP POLICY IF EXISTS "Authenticated users can insert lead sources" ON public.crm_lead_sources;
+DROP POLICY IF EXISTS "Authenticated users can update lead sources" ON public.crm_lead_sources;
+DROP POLICY IF EXISTS "Admins manage CRM lead sources" ON public.crm_lead_sources;
+CREATE POLICY "CRM lead sources viewable by CRM users"
+  ON public.crm_lead_sources FOR SELECT TO authenticated
+  USING (
+    public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  );
+CREATE POLICY "Admins manage CRM lead sources"
+  ON public.crm_lead_sources FOR ALL TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+
+DROP POLICY IF EXISTS "CRM leads viewable by CRM users" ON public.leads;
+DROP POLICY IF EXISTS "CRM users manage leads" ON public.leads;
+DROP POLICY IF EXISTS "Admins view all CRM leads" ON public.leads;
+DROP POLICY IF EXISTS "Workers view assigned CRM leads" ON public.leads;
+DROP POLICY IF EXISTS "Admins insert CRM leads" ON public.leads;
+DROP POLICY IF EXISTS "Workers insert own CRM leads" ON public.leads;
+DROP POLICY IF EXISTS "Admins update CRM leads" ON public.leads;
+DROP POLICY IF EXISTS "Workers update assigned CRM leads" ON public.leads;
+DROP POLICY IF EXISTS "Admins delete CRM leads" ON public.leads;
+CREATE POLICY "Admins view all CRM leads"
+  ON public.leads FOR SELECT TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers view assigned CRM leads"
+  ON public.leads FOR SELECT TO authenticated
+  USING (
+    assigned_to = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  );
+CREATE POLICY "Admins insert CRM leads"
+  ON public.leads FOR INSERT TO authenticated
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers insert own CRM leads"
+  ON public.leads FOR INSERT TO authenticated
+  WITH CHECK (
+    assigned_to = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  );
+CREATE POLICY "Admins update CRM leads"
+  ON public.leads FOR UPDATE TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers update assigned CRM leads"
+  ON public.leads FOR UPDATE TO authenticated
+  USING (
+    assigned_to = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  )
+  WITH CHECK (
+    assigned_to = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.is_active, true)
+        AND COALESCE(p.status, 'pending') = 'approved'
+        AND COALESCE(p.module_access, '[]'::jsonb) ? 'crm'
+    )
+  );
+CREATE POLICY "Admins delete CRM leads"
+  ON public.leads FOR DELETE TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role));
+
+DROP POLICY IF EXISTS "CRM followups viewable by authenticated" ON public.crm_followups;
+DROP POLICY IF EXISTS "CRM users view followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Authenticated users can insert followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Authenticated users can update followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Authenticated users can delete followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "CRM users manage followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Admins view all CRM followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Workers view assigned lead followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Admins insert CRM followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Workers insert assigned lead followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Admins update CRM followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Workers update assigned lead followups" ON public.crm_followups;
+DROP POLICY IF EXISTS "Admins delete CRM followups" ON public.crm_followups;
+CREATE POLICY "Admins view all CRM followups"
+  ON public.crm_followups FOR SELECT TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers view assigned lead followups"
+  ON public.crm_followups FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.leads l WHERE l.id = lead_id AND l.assigned_to = auth.uid()));
+CREATE POLICY "Admins insert CRM followups"
+  ON public.crm_followups FOR INSERT TO authenticated
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers insert assigned lead followups"
+  ON public.crm_followups FOR INSERT TO authenticated
+  WITH CHECK (EXISTS (SELECT 1 FROM public.leads l WHERE l.id = lead_id AND l.assigned_to = auth.uid()));
+CREATE POLICY "Admins update CRM followups"
+  ON public.crm_followups FOR UPDATE TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role))
+  WITH CHECK (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers update assigned lead followups"
+  ON public.crm_followups FOR UPDATE TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.leads l WHERE l.id = lead_id AND l.assigned_to = auth.uid()))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.leads l WHERE l.id = lead_id AND l.assigned_to = auth.uid()));
+CREATE POLICY "Admins delete CRM followups"
+  ON public.crm_followups FOR DELETE TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role));
+
+DROP POLICY IF EXISTS "CRM lead activities viewable by authenticated" ON public.crm_lead_activities;
+DROP POLICY IF EXISTS "CRM users view activities" ON public.crm_lead_activities;
+DROP POLICY IF EXISTS "Authenticated users can insert lead activities" ON public.crm_lead_activities;
+DROP POLICY IF EXISTS "Admins view all CRM lead activities" ON public.crm_lead_activities;
+DROP POLICY IF EXISTS "Workers view assigned lead activities" ON public.crm_lead_activities;
+DROP POLICY IF EXISTS "CRM users insert lead activities" ON public.crm_lead_activities;
+CREATE POLICY "Admins view all CRM lead activities"
+  ON public.crm_lead_activities FOR SELECT TO authenticated
+  USING (public.has_role(auth.uid(), 'admin'::public.app_role));
+CREATE POLICY "Workers view assigned lead activities"
+  ON public.crm_lead_activities FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.leads l WHERE l.id = lead_id AND l.assigned_to = auth.uid()));
+CREATE POLICY "CRM users insert lead activities"
+  ON public.crm_lead_activities FOR INSERT TO authenticated
+  WITH CHECK (
+    public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR EXISTS (SELECT 1 FROM public.leads l WHERE l.id = lead_id AND l.assigned_to = auth.uid())
+  );

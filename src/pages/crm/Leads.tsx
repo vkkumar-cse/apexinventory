@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ function statusVariant(status: LeadStatus) {
 
 export default function Leads() {
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [pipelines, setPipelines] = useState<CRMPipeline[]>([]);
   const [stages, setStages] = useState<CRMStage[]>([]);
@@ -92,7 +94,9 @@ export default function Leads() {
       (supabase as any).from("crm_pipelines").select("*").order("name", { ascending: true }),
       (supabase as any).from("crm_stages").select("*").order("position", { ascending: true }),
       (supabase as any).from("crm_lead_sources").select("*").eq("active", true).order("name", { ascending: true }),
-      (supabase as any).from("profiles").select("id,full_name,display_name,email").eq("status", "approved").order("full_name", { ascending: true }),
+      isAdmin
+        ? (supabase as any).from("profiles").select("id,full_name,display_name,email").eq("status", "approved").order("full_name", { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (!pipelineResult.error) setPipelines((pipelineResult.data as CRMPipeline[]) ?? []);
@@ -102,10 +106,11 @@ export default function Leads() {
   }
 
   async function handleSave(payload: Omit<LeadFormValue, "id">) {
+    const safePayload = isAdmin ? payload : { ...payload, assigned_to: user?.id ?? null };
     if (editingLead) {
       const { error } = await (supabase as any)
         .from("leads")
-        .update(payload)
+        .update(safePayload)
         .eq("id", editingLead.id);
 
       if (error) throw error;
@@ -114,24 +119,9 @@ export default function Leads() {
       return;
     }
 
-    const { data: latestLead, error: latestError } = await (supabase as any)
-      .from("leads")
-      .select("lead_no")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (latestError) throw latestError;
-
-    const latestNumber = typeof latestLead?.lead_no === "string"
-      ? Number.parseInt(latestLead.lead_no.replace(/^L/i, ""), 10)
-      : 0;
-    const nextNumber = Number.isFinite(latestNumber) ? latestNumber + 1 : 1;
-    const leadNo = `L${String(nextNumber).padStart(4, "0")}`;
-
     const { error } = await (supabase as any)
       .from("leads")
-      .insert({ ...payload, lead_no: leadNo });
+      .insert(safePayload);
 
     if (error) throw error;
     toast.success("Lead created successfully");
@@ -155,8 +145,6 @@ export default function Leads() {
 
   const filteredLeads = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return leads;
-
     return leads.filter((lead) => (
       (!query ||
         lead.lead_no.toLowerCase().includes(query) ||
@@ -181,7 +169,7 @@ export default function Leads() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{isAdmin ? "Leads" : "My Leads"}</h1>
           <p className="text-muted-foreground mt-1">
             {leads.length} lead{leads.length === 1 ? "" : "s"} registered
           </p>
@@ -191,7 +179,7 @@ export default function Leads() {
         </Button>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[1.5fr_repeat(5,1fr)]">
+      <div className={`grid gap-3 ${isAdmin ? "lg:grid-cols-[1.5fr_repeat(5,1fr)]" : "lg:grid-cols-[1.5fr_repeat(4,1fr)]"}`}>
         <div className="relative">
           <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
           <Input
@@ -231,17 +219,19 @@ export default function Leads() {
             {sources.map((source) => <SelectItem key={source.id} value={source.id}>{source.name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filters.assigned_to} onValueChange={(value) => setFilters({ ...filters, assigned_to: value })}>
-          <SelectTrigger><SelectValue placeholder="Assigned" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Users</SelectItem>
-            {users.map((profile) => (
-              <SelectItem key={profile.id} value={profile.id}>
-                {profile.full_name || profile.display_name || profile.email || profile.id}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {isAdmin && (
+          <Select value={filters.assigned_to} onValueChange={(value) => setFilters({ ...filters, assigned_to: value })}>
+            <SelectTrigger><SelectValue placeholder="Assigned" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Users</SelectItem>
+              {users.map((profile) => (
+                <SelectItem key={profile.id} value={profile.id}>
+                  {profile.full_name || profile.display_name || profile.email || profile.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Input type="date" value={filters.date_from} onChange={(event) => setFilters({ ...filters, date_from: event.target.value })} />
         <Input type="date" value={filters.date_to} onChange={(event) => setFilters({ ...filters, date_to: event.target.value })} />
       </div>
@@ -305,27 +295,29 @@ export default function Leads() {
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete {lead.lead_no}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This permanently deletes the lead for {lead.company_name}.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={(event) => { event.stopPropagation(); remove(lead); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {isAdmin && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete {lead.lead_no}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This permanently deletes the lead for {lead.company_name}.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={(event) => { event.stopPropagation(); remove(lead); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

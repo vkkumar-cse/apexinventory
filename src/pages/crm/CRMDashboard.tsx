@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { toast } from "sonner";
@@ -8,9 +9,9 @@ import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAx
 
 type Lead = {
   id: string;
-  created_at: string;
-  estimated_value: number | null;
-  won_amount: number | null;
+  created_at?: string;
+  estimated_value?: number | null;
+  won_amount?: number | null;
   status: "in_progress" | "won" | "lost";
   crm_stages?: { name: string } | null;
   crm_lead_sources?: { name: string } | null;
@@ -32,24 +33,39 @@ function groupCount(rows: string[]) {
 }
 
 export default function CRMDashboard() {
+  const { user, isAdmin } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [followups, setFollowups] = useState<Followup[]>([]);
 
   useEffect(() => {
     document.title = "CRM Dashboard - Apex Software";
     load();
-  }, []);
+  }, [isAdmin, user?.id]);
 
   async function load() {
+    if (!isAdmin && !user?.id) return;
+
     try {
-      const [leadResult, followupResult] = await Promise.all([
-        (supabase as any)
+      const leadQuery = isAdmin
+        ? (supabase as any)
           .from("leads")
-          .select("id,created_at,estimated_value,won_amount,status,crm_stages(name),crm_lead_sources(name)"),
-        (supabase as any)
+          .select("id,created_at,estimated_value,won_amount,status,crm_stages(name),crm_lead_sources(name)")
+        : (supabase as any)
+          .from("leads")
+          .select("id,status,crm_stages(name)")
+          .eq("assigned_to", user?.id);
+
+      const followupQuery = isAdmin
+        ? (supabase as any)
           .from("crm_followups")
-          .select("id,followup_date,status"),
-      ]);
+          .select("id,followup_date,status")
+        : (supabase as any)
+          .from("crm_followups")
+          .select("id,followup_date,status,leads!inner(assigned_to)")
+          .eq("leads.assigned_to", user?.id);
+
+      const [leadResult, followupResult] = await Promise.all([leadQuery, followupQuery]);
+
       if (leadResult.error) throw leadResult.error;
       if (followupResult.error) throw followupResult.error;
       setLeads((leadResult.data as Lead[]) ?? []);
@@ -82,29 +98,41 @@ export default function CRMDashboard() {
     { name: "Lost", value: metrics.lost },
   ];
   const monthly = Object.entries(leads.reduce<Record<string, number>>((acc, lead) => {
+    if (!lead.created_at) return acc;
     const month = lead.created_at.slice(0, 7);
     acc[month] = (acc[month] ?? 0) + 1;
     return acc;
   }, {})).sort(([a], [b]) => a.localeCompare(b)).map(([month, value]) => ({ month, value }));
 
+  const metricCards = isAdmin
+    ? [
+      ["Total Leads", metrics.total],
+      ["Active Leads", metrics.active],
+      ["Won Leads", metrics.won],
+      ["Lost Leads", metrics.lost],
+      ["Conversion Rate", `${metrics.conversionRate}%`],
+      ["Total Won Value", `Rs. ${metrics.wonValue.toLocaleString("en-IN")}`],
+      ["Today's Follow-ups", metrics.todaysFollowups],
+      ["Overdue Follow-ups", metrics.overdueFollowups],
+    ]
+    : [
+      ["My Total Leads", metrics.total],
+      ["My Active Leads", metrics.active],
+      ["My Won Leads", metrics.won],
+      ["My Lost Leads", metrics.lost],
+      ["My Today's Follow-ups", metrics.todaysFollowups],
+      ["My Overdue Follow-ups", metrics.overdueFollowups],
+    ];
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">CRM Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Lead performance and follow-up workload.</p>
+        <h1 className="text-3xl font-bold tracking-tight">{isAdmin ? "CRM Dashboard" : "My Dashboard"}</h1>
+        <p className="text-muted-foreground mt-1">{isAdmin ? "Lead performance and follow-up workload." : "Your assigned lead performance and follow-up workload."}</p>
       </div>
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {[
-          ["Total Leads", metrics.total],
-          ["Active Leads", metrics.active],
-          ["Won Leads", metrics.won],
-          ["Lost Leads", metrics.lost],
-          ["Conversion Rate", `${metrics.conversionRate}%`],
-          ["Total Won Value", `Rs. ${metrics.wonValue.toLocaleString("en-IN")}`],
-          ["Today's Follow-ups", metrics.todaysFollowups],
-          ["Overdue Follow-ups", metrics.overdueFollowups],
-        ].map(([label, value]) => (
+        {metricCards.map(([label, value]) => (
           <Card key={label} className="p-4 border border-border/50">
             <p className="text-sm text-muted-foreground">{label}</p>
             <p className="text-2xl font-bold mt-1">{value}</p>
@@ -113,18 +141,22 @@ export default function CRMDashboard() {
       </div>
 
       <div className="grid xl:grid-cols-2 gap-4">
-        <ChartCard title="Leads by Stage">
+        <ChartCard title={isAdmin ? "Leads by Stage" : "My Leads by Stage"}>
           <BarChart data={byStage}><CartesianGrid vertical={false} /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Bar dataKey="value" fill="#2563eb" /></BarChart>
         </ChartCard>
-        <ChartCard title="Leads by Source">
-          <PieChart><ChartTooltip content={<ChartTooltipContent />} /><Pie data={bySource} dataKey="value" nameKey="name">{bySource.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}</Pie></PieChart>
-        </ChartCard>
-        <ChartCard title="Monthly Lead Creation">
-          <LineChart data={monthly}><CartesianGrid vertical={false} /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Line dataKey="value" stroke="#16a34a" strokeWidth={2} /></LineChart>
-        </ChartCard>
-        <ChartCard title="Won vs Lost">
-          <BarChart data={wonLost}><CartesianGrid vertical={false} /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Bar dataKey="value" fill="#f59e0b" /></BarChart>
-        </ChartCard>
+        {isAdmin && (
+          <>
+            <ChartCard title="Leads by Source">
+              <PieChart><ChartTooltip content={<ChartTooltipContent />} /><Pie data={bySource} dataKey="value" nameKey="name">{bySource.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}</Pie></PieChart>
+            </ChartCard>
+            <ChartCard title="Monthly Lead Creation">
+              <LineChart data={monthly}><CartesianGrid vertical={false} /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Line dataKey="value" stroke="#16a34a" strokeWidth={2} /></LineChart>
+            </ChartCard>
+            <ChartCard title="Won vs Lost">
+              <BarChart data={wonLost}><CartesianGrid vertical={false} /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip content={<ChartTooltipContent />} /><Bar dataKey="value" fill="#f59e0b" /></BarChart>
+            </ChartCard>
+          </>
+        )}
       </div>
     </div>
   );

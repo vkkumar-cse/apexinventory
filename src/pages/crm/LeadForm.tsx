@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,7 @@ const emptyForm = {
 };
 
 export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormProps) {
+  const { user, isAdmin } = useAuth();
   const [form, setForm] = useState(emptyForm);
   const [pipelines, setPipelines] = useState<CRMPipeline[]>([]);
   const [stages, setStages] = useState<CRMStage[]>([]);
@@ -152,11 +154,11 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
           .select("*")
           .eq("active", true)
           .order("name", { ascending: true }),
-        (supabase as any)
+        isAdmin ? (supabase as any)
           .from("profiles")
           .select("id,full_name,display_name,email")
           .eq("status", "approved")
-          .order("full_name", { ascending: true }),
+          .order("full_name", { ascending: true }) : Promise.resolve({ data: [], error: null }),
       ]);
 
       if (pipelineResult.error) throw pipelineResult.error;
@@ -229,10 +231,10 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
         requirement: parsed.data.requirement || null,
         estimated_value: parsed.data.estimated_value === "" ? null : Number(parsed.data.estimated_value ?? 0),
         address: parsed.data.address || null,
-        assigned_to: parsed.data.assigned_to || null,
+        assigned_to: isAdmin ? (parsed.data.assigned_to || null) : (user?.id ?? null),
         pipeline_id: parsed.data.pipeline_id,
         stage_id: parsed.data.stage_id,
-        status: parsed.data.status,
+        status: isAdmin ? parsed.data.status : (lead?.status ?? "in_progress"),
         notes: parsed.data.notes || null,
       });
       onOpenChange(false);
@@ -307,22 +309,24 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="assigned_to">Assigned To</Label>
-              <Select value={form.assigned_to} onValueChange={(value) => setForm({ ...form, assigned_to: value === "none" ? "" : value })}>
-                <SelectTrigger id="assigned_to">
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
-                  {users.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>
-                      {profile.full_name || profile.display_name || profile.email || profile.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label htmlFor="assigned_to">Assigned To</Label>
+                <Select value={form.assigned_to} onValueChange={(value) => setForm({ ...form, assigned_to: value === "none" ? "" : value })}>
+                  <SelectTrigger id="assigned_to">
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {users.map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.full_name || profile.display_name || profile.email || profile.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
@@ -394,19 +398,21 @@ export default function LeadForm({ open, onOpenChange, lead, onSave }: LeadFormP
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={form.status} onValueChange={(value: LeadStatus) => setForm({ ...form, status: value })}>
-                <SelectTrigger id="status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="won">Won</SelectItem>
-                  <SelectItem value="lost">Lost</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select value={form.status} onValueChange={(value: LeadStatus) => setForm({ ...form, status: value })}>
+                  <SelectTrigger id="status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="won">Won</SelectItem>
+                    <SelectItem value="lost">Lost</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

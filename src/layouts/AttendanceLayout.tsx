@@ -2,7 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users as UsersIcon, LogOut, ChevronLeft, CalendarClock, History, FileText, Umbrella, Calendar, Coins } from "lucide-react";
+import { LayoutDashboard, Users as UsersIcon, LogOut, ChevronLeft, CalendarClock, History, FileText, Umbrella, Calendar, Coins, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apexLogo from "@/assets/apex-logo.jpeg";
 
@@ -12,6 +12,7 @@ export function AttendanceLayout({ children }: { children: React.ReactNode }) {
   const nav = [
     { to: "/attendance/dashboard", label: "Dashboard", icon: LayoutDashboard, show: true },
     { to: "/attendance/employees", label: "Employees", icon: UsersIcon, show: isAdmin },
+    { to: "/attendance/sites", label: "Sites", icon: MapPin, show: isAdmin },
     { to: "/attendance/checkin", label: "Check-in", icon: CalendarClock, show: true },
     { to: "/attendance/history", label: "History", icon: History, show: true },
     { to: "/attendance/reports", label: "Reports", icon: FileText, show: isAdmin },
