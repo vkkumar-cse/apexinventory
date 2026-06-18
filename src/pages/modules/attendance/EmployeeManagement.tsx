@@ -275,6 +275,10 @@ export default function EmployeeManagement() {
   };
 
   const openFaceRegistration = (profile: EmployeeProfile) => {
+    if (profile.face_registered_at) {
+      toast.info("Face is already registered. Use Reset Face to require re-registration.");
+      return;
+    }
     setSelectedProfileId(profile.id);
     setCameraPermissionError(null);
     setRegistrationStep(0);
@@ -394,7 +398,34 @@ export default function EmployeeManagement() {
     toast.success("Face registration reset.");
   };
 
-  const faceStatus = (profile: EmployeeProfile) => profile.face_registered_at ? "Verified Ready" : "Not Set";
+  const resetFaceProfile = async (profile: EmployeeProfile) => {
+    if (!profile.face_registered_at) {
+      toast.info("Face Registration Required");
+      return;
+    }
+
+    const employeeName = profile.full_name || profile.display_name || profile.email || "this employee";
+    if (!window.confirm(`Reset face profile for ${employeeName}? The worker must register their face again on next login.`)) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("employee_face_profiles")
+        .delete()
+        .eq("profile_id", profile.id);
+
+      if (error) throw error;
+
+      toast.success("Face profile reset. Re-registration is now required.");
+      await fetchProfiles();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset face profile");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const faceStatus = (profile: EmployeeProfile) => profile.face_registered_at ? "Face Registered · Verified" : "Face Registration Required";
 
   return (
     <div className="min-h-[calc(100vh-100px)] max-w-full space-y-6 overflow-x-hidden rounded-2xl border border-slate-800 bg-[#0B1528] p-4 text-white shadow-2xl md:p-8">
@@ -505,10 +536,16 @@ export default function EmployeeManagement() {
                           <Edit3 className="mr-2 h-4 w-4" />
                           Edit
                         </Button>
-                        <Button variant="outline" className="min-h-11 w-full justify-center border-slate-800 text-slate-300 hover:bg-slate-800" onClick={() => openFaceRegistration(profile)}>
-                          <Camera className="mr-2 h-4 w-4" />
-                          {profile.face_registered_at ? "Update Face" : "Register Face"}
-                        </Button>
+                        {profile.face_registered_at ? (
+                          <Button variant="outline" className="min-h-11 w-full justify-center border-amber-500/30 text-amber-300 hover:bg-amber-500/10" onClick={() => resetFaceProfile(profile)} disabled={isSubmitting}>
+                            <Camera className="mr-2 h-4 w-4" />
+                            Reset Face
+                          </Button>
+                        ) : (
+                          <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-center text-xs font-semibold text-slate-400">
+                            Face Registration Required
+                          </div>
+                        )}
                         <Button variant="outline" className="min-h-11 w-full justify-center border-slate-800 text-slate-300 hover:bg-slate-800" onClick={() => openAssignSites(profile)}>
                           <MapPin className="mr-2 h-4 w-4" />
                           Assign Sites
@@ -605,10 +642,16 @@ export default function EmployeeManagement() {
                               <Edit3 className="h-3.5 w-3.5 mr-1" />
                               Edit
                             </Button>
-                            <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => openFaceRegistration(profile)}>
-                              <Camera className="h-3.5 w-3.5 mr-1" />
-                              {profile.face_registered_at ? "Update Face" : "Register"}
-                            </Button>
+                            {profile.face_registered_at ? (
+                              <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-amber-500/30 hover:bg-amber-500/10 text-amber-300" onClick={() => resetFaceProfile(profile)} disabled={isSubmitting}>
+                                <Camera className="h-3.5 w-3.5 mr-1" />
+                                Reset Face
+                              </Button>
+                            ) : (
+                              <span className="w-full max-w-28 rounded-md border border-slate-800 px-2 py-1 text-center text-[10px] font-semibold text-slate-500">
+                                Required
+                              </span>
+                            )}
                             <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-slate-800 hover:bg-slate-800 text-slate-300" onClick={() => openAssignSites(profile)}>
                               <MapPin className="h-3.5 w-3.5 mr-1" />
                               Assign

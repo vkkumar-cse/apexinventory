@@ -10,6 +10,7 @@ type Tx = {
   type: string;
   quantity: number;
   note: string | null;
+  description: string | null;
   created_at: string;
   product_id: string | null;
   user_id: string | null;
@@ -22,7 +23,7 @@ export default function Transactions() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "purchase" | "usage">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "purchase" | "usage" | "sale" | "adjustment" | "damage" | "return">("all");
 
   useEffect(() => {
     document.title = "Transaction History · Apex Software";
@@ -154,12 +155,16 @@ export default function Transactions() {
           <select
             id="typeFilter"
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as "all" | "purchase" | "usage")}
+            onChange={(e) => setTypeFilter(e.target.value as "all" | "purchase" | "usage" | "sale" | "adjustment" | "damage" | "return")}
             className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
           >
             <option value="all">All</option>
             <option value="purchase">Purchase</option>
             <option value="usage">Usage</option>
+            <option value="sale">Sale</option>
+            <option value="adjustment">Adjustment</option>
+            <option value="damage">Damage</option>
+            <option value="return">Return</option>
           </select>
         </div>
 
@@ -209,6 +214,14 @@ export default function Transactions() {
                       <span className="font-mono text-foreground">{t.quantity}</span>
                     </div>
                     <div className="flex justify-between gap-3">
+                      <span>Part Number</span>
+                      <span className="break-words text-right font-mono text-foreground">{t.products?.part_no ?? "—"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Reason</span>
+                      <span className="break-words text-right text-foreground">{t.description || t.note || "—"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
                       <span>Created By</span>
                       <span className="break-words text-right text-foreground">{t.created_by_name}</span>
                     </div>
@@ -237,10 +250,16 @@ export default function Transactions() {
                   Product
                 </th>
                 <th className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-black">
+                  Part Number
+                </th>
+                <th className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-black">
                   Type
                 </th>
                 <th className="border-b border-border px-4 py-3 text-right text-sm font-semibold text-black">
                   Quantity
+                </th>
+                <th className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-black">
+                  Reason / Description
                 </th>
                 <th className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-black">
                   Created By
@@ -253,7 +272,7 @@ export default function Transactions() {
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr className="bg-slate-950/80">
-                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-6 text-center text-sm text-muted-foreground">
                     No transactions match the selected filters.
                   </td>
                 </tr>
@@ -276,11 +295,17 @@ export default function Transactions() {
                       <td className="px-4 py-3 text-sm text-foreground">
                         {t.products?.name ?? "Unknown Product"}
                       </td>
+                      <td className="px-4 py-3 text-sm font-mono text-muted-foreground">
+                        {t.products?.part_no ?? "—"}
+                      </td>
                       <td className="px-4 py-3 text-sm text-foreground">
                         {t.type}
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-foreground">
                         {t.quantity}
+                      </td>
+                      <td className="max-w-xs px-4 py-3 text-sm text-muted-foreground">
+                        <span className="line-clamp-2">{t.description || t.note || "—"}</span>
                       </td>
                       <td className="px-4 py-3 text-sm text-foreground">
                         {t.created_by_name}

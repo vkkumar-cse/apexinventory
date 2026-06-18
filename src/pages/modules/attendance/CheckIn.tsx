@@ -107,7 +107,9 @@ export default function CheckIn() {
   // Webcam & Face Verification State
   const webcamRef = useRef<Webcam>(null);
   const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [showFaceRegistration, setShowFaceRegistration] = useState(false);
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
+  const [isRegisteringFace, setIsRegisteringFace] = useState(false);
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
   const [pendingCoords, setPendingCoords] = useState<VerifiedGpsCoords | null>(null);
   const [pendingSiteValidation, setPendingSiteValidation] = useState<SiteValidation | null>(null);
@@ -843,6 +845,86 @@ export default function CheckIn() {
     setIsSubmitting(false);
   };
 
+  const openFaceRegistration = async () => {
+    const latestFaceProfile = await fetchLatestFaceProfile();
+    if (isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+      toast.success("Face Registered", {
+        description: "Verified. Admin reset is required before re-registration.",
+      });
+      return;
+    }
+
+    setCameraPermissionError(null);
+    setShowFaceRegistration(true);
+  };
+
+  const resetFaceRegistrationCamera = () => {
+    setShowFaceRegistration(false);
+    setCameraPermissionError(null);
+    setIsRegisteringFace(false);
+  };
+
+  const registerFaceProfile = async () => {
+    const video = webcamRef.current?.video;
+    if (!currentProfileId || !video) {
+      toast.error("Camera is not ready");
+      return;
+    }
+
+    setIsRegisteringFace(true);
+    try {
+      const latestFaceProfile = await fetchLatestFaceProfile();
+      if (isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+        toast.error("Face already registered", {
+          description: "Admin reset is required before re-registration.",
+        });
+        resetFaceRegistrationCamera();
+        return;
+      }
+
+      const descriptor = await getFaceDescriptorFromVideo(video);
+      if (!isValidFaceDescriptor(descriptor)) {
+        toast.error("Face capture failed");
+        return;
+      }
+
+      const { error } = await (supabase as any)
+        .from("employee_face_profiles")
+        .insert({
+          profile_id: currentProfileId,
+          face_descriptor: descriptor,
+          face_image_path: null,
+        });
+
+      if (error) throw error;
+
+      toast.success("Face Registered", {
+        description: "Verified. You can now mark attendance.",
+      });
+      resetFaceRegistrationCamera();
+      await fetchFaceProfile();
+    } catch (error: any) {
+      const message = error?.message || "";
+      if (message.includes("duplicate") || message.includes("employee_face_profiles_profile_id_key")) {
+        toast.error("Face already registered", {
+          description: "Admin reset is required before re-registration.",
+        });
+      } else if (message.includes("No face detected")) {
+        toast.error("No Face Detected", {
+          description: "Please position your face inside the camera frame.",
+        });
+      } else if (message.includes("Multiple faces detected")) {
+        toast.error("Multiple Faces Detected", {
+          description: "Only one person should be visible during registration.",
+        });
+      } else {
+        toast.error(message || "Face registration failed");
+      }
+    } finally {
+      setIsRegisteringFace(false);
+    }
+  };
+
 const formatISTTime = (time: string | null) => {
   if (!time) return "-";
 
@@ -1087,7 +1169,7 @@ const formatISTTime = (time: string | null) => {
                   {hasValidFaceProfile ? (
                     <span className="text-emerald-400 flex items-center gap-1 font-medium">
                       <CheckCircle2 className="w-3 h-3" />
-                      Face Profile Ready
+                      Face Registered · Verified
                     </span>
                   ) : (
                     <span className="text-amber-400 flex items-center gap-1 font-medium">
@@ -1097,9 +1179,19 @@ const formatISTTime = (time: string | null) => {
                   )}
                 </div>
                 {!hasValidFaceProfile && (
-                  <p className="text-xs text-slate-400">
-                    Please register face before attendance. Admins can add it in Employee Management.
-                  </p>
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-400">
+                      Register your face once before attendance. Re-registration requires an admin reset.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={openFaceRegistration}
+                      className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      Register Face
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1340,6 +1432,76 @@ const formatISTTime = (time: string | null) => {
           </>
         )}
       </div>
+
+      {/* Face Registration Modal */}
+      {showFaceRegistration && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0B1528] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Camera className="w-5 h-5 text-emerald-400" />
+                Register Face
+              </h3>
+              <button onClick={resetFaceRegistrationCamera} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {cameraPermissionError ? (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 mb-4">
+                <p className="font-semibold mb-2">Camera permission denied</p>
+                <p className="text-sm">{cameraPermissionError}</p>
+                <Button
+                  onClick={resetFaceRegistrationCamera}
+                  variant="outline"
+                  className="mt-4 border-red-500/20 text-red-400 hover:bg-red-500/10"
+                >
+                  Close
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  Capture your face once. After this, only an admin reset can allow re-registration.
+                </div>
+                <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
+                  <Webcam
+                    ref={webcamRef}
+                    audio={false}
+                    mirrored
+                    screenshotFormat="image/jpeg"
+                    className="w-full"
+                    onUserMediaError={() => {
+                      setCameraPermissionError("Camera permission denied");
+                    }}
+                  />
+                </div>
+                <p className="text-sm text-slate-400">
+                  Keep one face centered and well lit. Face images are not stored.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button
+                    onClick={registerFaceProfile}
+                    className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                    disabled={isRegisteringFace}
+                  >
+                    {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
+                    Save Face Profile
+                  </Button>
+                  <Button
+                    onClick={resetFaceRegistrationCamera}
+                    variant="outline"
+                    className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"
+                    disabled={isRegisteringFace}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Face Verification Modal */}
       {showFaceCamera && (

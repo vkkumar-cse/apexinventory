@@ -29,7 +29,7 @@ type Product = {
   categories: { id: string; name: string; parent_id: string | null } | null;
 };
 
-type Tx = { id: string; type: string; quantity: number; created_at: string; note: string | null; user_id: string | null };
+type Tx = { id: string; type: string; quantity: number; created_at: string; note: string | null; description: string | null; user_id: string | null };
 type Related = { id: string; related_product_id: string; products: { id: string; code: number; part_no: string | null; name: string; stock: number; reorder_level: number } };
 
 const escapeHtml = (value: string) =>
@@ -55,6 +55,7 @@ export default function ProductDetail() {
   const [related, setRelated] = useState<Related[]>([]);
   const [allProducts, setAllProducts] = useState<{ id: string; code: number; part_no: string | null; name: string }[]>([]);
   const [qty, setQty] = useState("1");
+  const [transactionReason, setTransactionReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [qrUrl, setQrUrl] = useState("");
@@ -75,9 +76,9 @@ export default function ProductDetail() {
     labels: [] as ("OPTO" | "NPD")[],
   });
 
-const productIdentifier = product ? (product.part_no ?? `#${product.code}`) : "";
-const productQrValue = product ? (product.part_no || String(product.code)) : "";
-const productUrl = product ? `${window.location.origin}/product/${product.part_no || product.code}` : "";
+  const productIdentifier = product ? (product.part_no ?? `#${product.code}`) : "";
+  const productQrValue = product ? (product.part_no || String(product.code)) : "";
+  const productUrl = product ? `${window.location.origin}/product/${product.part_no || product.code}` : "";
   useEffect(() => { if (routeParam) { document.title = "Product · Apex Software"; load(); } }, [routeParam]);
 
   useEffect(() => {
@@ -93,7 +94,7 @@ const productUrl = product ? `${window.location.origin}/product/${product.part_n
     }
 
     QRCode.toDataURL(productQrValue, {
-      width: 180,
+      width: 120,
       margin: 0,
       color: { dark: "#000000", light: "#ffffff" },
     }).then(setLabelQrUrl);
@@ -110,15 +111,15 @@ const productUrl = product ? `${window.location.origin}/product/${product.part_n
 
     if (!p) { setProduct(null); setLoading(false); return; }
     const { data: ps } = await supabase
-  .from("product_suppliers" as any)
-  .select("suppliers(name)")
-  .eq("product_id", p.id);
+      .from("product_suppliers" as any)
+      .select("suppliers(name)")
+      .eq("product_id", p.id);
 
-setProductSuppliers(
-  ((ps as any) ?? [])
-    .map((x: any) => x.suppliers?.name)
-    .filter(Boolean)
-);
+    setProductSuppliers(
+      ((ps as any) ?? [])
+        .map((x: any) => x.suppliers?.name)
+        .filter(Boolean)
+    );
 
     let parent: any = null;
     if ((p as any).categories?.parent_id) {
@@ -149,17 +150,27 @@ setProductSuppliers(
     setLoading(false);
   }
 
-  async function action(type: "purchase" | "usage" | "sale") {
+  async function action(type: "purchase" | "usage" | "sale" | "adjustment" | "damage" | "return") {
     const parsed = qtySchema.safeParse(qty);
     if (!parsed.success) { toast.error("Enter a positive quantity"); return; }
+    const reason = transactionReason.trim();
+    if (!reason) { toast.error("Reason / Description is required"); return; }
     if (!user || !product) return;
     if (!isAdmin && type !== "usage") { toast.error("Only admins can record purchases or sales"); return; }
     setBusy(true);
-    const { error } = await supabase.from("transactions").insert({ product_id: product.id, type, quantity: parsed.data, user_id: user.id });
+    const { error } = await supabase.from("transactions").insert({ product_id: product.id, type, quantity: parsed.data, user_id: user.id, description: reason });
     setBusy(false);
     if (error) { toast.error(error.message); return; }
-    toast.success(`${type === "purchase" ? "Stock added" : type === "usage" ? "Usage recorded" : "Sale recorded"}: ${parsed.data}`);
-    setQty("1"); load();
+    const actionLabel: Record<typeof type, string> = {
+      purchase: "Stock added",
+      usage: "Usage recorded",
+      sale: "Sale recorded",
+      adjustment: "Stock adjustment recorded",
+      damage: "Damage recorded",
+      return: "Return recorded",
+    };
+    toast.success(`${actionLabel[type]}: ${parsed.data}`);
+    setQty("1"); setTransactionReason(""); load();
   }
 
   async function downloadQR() {
@@ -195,7 +206,7 @@ setProductSuppliers(
           <title>QR Label - ${escapeHtml(partNumber)}</title>
           <style>
             @page {
-              size: 40mm 25mm;
+              size: 50mm 30mm;
               margin: 0;
             }
             * {
@@ -205,40 +216,41 @@ setProductSuppliers(
             body {
               margin: 0;
               padding: 0;
-              width: 40mm;
-              height: 25mm;
+              width: 50mm;
+              height: 30mm;
               background: #fff;
               color: #000;
               font-family: Arial, Helvetica, sans-serif;
             }
             .qr-label {
-              width: 40mm;
-              height: 25mm;
+              width: 50mm;
+              height: 30mm;
               display: flex;
-              align-items: center;
+              align-items: flex-start;
               gap: 2mm;
-              padding: 2mm 1.5mm;
+              padding: 2mm;
               overflow: hidden;
               page-break-inside: avoid;
               break-inside: avoid;
             }
             .qr-label img {
-              width: 18mm;
-              height: 18mm;
-              flex: 0 0 18mm;
+              width: 10mm;
+              height: 10mm;
+              flex: 0 0 10mm;
               display: block;
             }
             .qr-label__text {
               min-width: 0;
               flex: 1;
-              line-height: 1.1;
+              line-height: 1.05;
+              padding-top: 0.2mm;
             }
             .qr-label__name {
               display: -webkit-box;
               -webkit-line-clamp: 2;
               -webkit-box-orient: vertical;
               overflow: hidden;
-              font-size: 8.5px;
+              font-size: 11.5pt;
               font-weight: 700;
               text-transform: uppercase;
               word-break: break-word;
@@ -249,20 +261,23 @@ setProductSuppliers(
               overflow: hidden;
               white-space: nowrap;
               text-overflow: ellipsis;
-              font-size: 7px;
             }
             .qr-label__part {
-              font-weight: 600;
+              margin-top: 1.2mm;
+              font-size: 10.5pt;
+              font-weight: 700;
             }
             .qr-label__category {
+              margin-top: 0.8mm;
               text-transform: uppercase;
+              font-size: 7pt;
             }
             @media print {
               html,
               body,
               .qr-label {
-                width: 40mm;
-                height: 25mm;
+                width: 50mm;
+                height: 30mm;
               }
             }
           </style>
@@ -285,7 +300,7 @@ setProductSuppliers(
     if (!product || !productQrValue) return;
 
     const qrImageUrl = labelQrUrl || await QRCode.toDataURL(productQrValue, {
-      width: 180,
+      width: 120,
       margin: 0,
       color: { dark: "#000000", light: "#ffffff" },
     });
@@ -427,10 +442,10 @@ setProductSuppliers(
     { label: "Category", value: parentCat ? <Link className="text-primary hover:underline" to={`/inventory/categories/${parentCat.id}`}>{parentCat.name}</Link> : "—" },
     { label: "Sub-category", value: product.categories ? <Link className="text-primary hover:underline" to={`/inventory/categories/${product.categories.id}`}>{product.categories.name}</Link> : "—" },
     { label: "Labels", value: <div className="flex gap-1">{(product.labels ?? []).map(l => <Badge key={l} variant="outline">{l}</Badge>)}{(product.labels ?? []).length === 0 && "—"}</div> },
-{
-  label: "Suppliers",
-  value: productSuppliers.length > 0 ? productSuppliers.join(", ") : "—",
-},    ...(isAdmin ? [{ label: "Purchase price", value: `₹${Number(product.purchase_price).toFixed(2)}` }] : []),
+    {
+      label: "Suppliers",
+      value: productSuppliers.length > 0 ? productSuppliers.join(", ") : "—",
+    }, ...(isAdmin ? [{ label: "Purchase price", value: `₹${Number(product.purchase_price).toFixed(2)}` }] : []),
     { label: "Selling price", value: <span className="text-success">₹{Number(product.selling_price).toFixed(2)}</span> },
     { label: "Current stock", value: <span className="font-bold">{product.stock}</span> },
     { label: "Reorder level", value: product.reorder_level },
@@ -451,8 +466,8 @@ setProductSuppliers(
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print Product Details</Button>
-          <Button variant="outline" size="sm" onClick={openQrLabelPreview}><Printer className="h-4 w-4 mr-1" />Preview QR Label</Button>
-          <Button variant="outline" size="sm" onClick={printQrLabel}><Printer className="h-4 w-4 mr-1" />Print QR Label</Button>
+          <Button variant="outline" size="sm" onClick={openQrLabelPreview}><Printer className="h-4 w-4 mr-1" />Preview Label</Button>
+          <Button variant="outline" size="sm" onClick={printQrLabel}><Printer className="h-4 w-4 mr-1" />Print Label</Button>
           <StockBadge stock={product.stock} reorder={product.reorder_level} />
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={openEdit}><Pencil className="h-4 w-4 mr-1" />Edit</Button>
@@ -515,8 +530,8 @@ setProductSuppliers(
           <p className="text-[10px] text-muted-foreground font-mono break-all mt-1">{productUrl}</p>
           <div className="flex gap-2 mt-4 no-print">
             <Button variant="outline" size="sm" className="flex-1" onClick={downloadQR}><Download className="h-3 w-3 mr-1" />PNG</Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={openQrLabelPreview}><Printer className="h-3 w-3 mr-1" />Preview</Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={printQrLabel}><Printer className="h-3 w-3 mr-1" />Print</Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={openQrLabelPreview}><Printer className="h-3 w-3 mr-1" />Preview Label</Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={printQrLabel}><Printer className="h-3 w-3 mr-1" />Print Label</Button>
           </div>
         </Card>
       </div>
@@ -524,23 +539,48 @@ setProductSuppliers(
       <Card className="p-6 no-print">
         <h2 className="font-semibold mb-1">Stock operations</h2>
         <p className="text-xs text-muted-foreground mb-4">{isAdmin ? "Admins can purchase, sell, or record usage." : "Workers can record usage only."} All actions are logged.</p>
-        <div className="flex items-end gap-3 flex-wrap">
-          <div className="space-y-2 w-32">
+        <div className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)] md:items-end">
+          <div className="space-y-2 md:w-32">
             <Label>Quantity</Label>
             <Input type="number" min={1} value={qty} onChange={e => setQty(e.target.value)} />
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="min-w-0 space-y-2">
+            <Label>Reason / Description *</Label>
+            <Textarea
+              className="min-h-20"
+              rows={3}
+              value={transactionReason}
+              onChange={(e) => setTransactionReason(e.target.value)}
+              placeholder="Purchased from supplier ABC, used during calibration service..."
+            />
+          </div>
+          <div className="grid gap-2 md:col-span-2 md:grid-cols-3 lg:grid-cols-6">
             {isAdmin && (
-              <Button size="lg" onClick={() => action("purchase")} disabled={busy} className="bg-success hover:bg-success/90 text-success-foreground">
-                <Plus className="h-4 w-4 mr-1" />Add stock
+              <Button size="lg" onClick={() => action("purchase")} disabled={busy} className="w-full bg-success hover:bg-success/90 text-success-foreground">
+                <Plus className="h-4 w-4 mr-1" />Add Stock
               </Button>
             )}
-            <Button size="lg" variant="secondary" onClick={() => action("usage")} disabled={busy}>
+            <Button size="lg" variant="secondary" onClick={() => action("usage")} disabled={busy} className="w-full">
               <Minus className="h-4 w-4 mr-1" />Use
             </Button>
             {isAdmin && (
-              <Button size="lg" variant="secondary" onClick={() => action("sale")} disabled={busy}>
+              <Button size="lg" variant="secondary" onClick={() => action("sale")} disabled={busy} className="w-full">
                 <DollarSign className="h-4 w-4 mr-1" />Sell
+              </Button>
+            )}
+            {isAdmin && (
+              <Button size="lg" variant="secondary" onClick={() => action("return")} disabled={busy} className="w-full">
+                <Plus className="h-4 w-4 mr-1" />Return
+              </Button>
+            )}
+            {isAdmin && (
+              <Button size="lg" variant="secondary" onClick={() => action("adjustment")} disabled={busy} className="w-full">
+                <Plus className="h-4 w-4 mr-1" />Adjustment
+              </Button>
+            )}
+            {isAdmin && (
+              <Button size="lg" variant="secondary" onClick={() => action("damage")} disabled={busy} className="w-full">
+                <Minus className="h-4 w-4 mr-1" />Damage
               </Button>
             )}
           </div>
@@ -556,9 +596,10 @@ setProductSuppliers(
                 <div>
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">{t.type}</p>
                   <p className="text-xs">By <b>{profiles[t.user_id ?? ""] ?? "—"}</b></p>
+                  <p className="text-xs text-muted-foreground">Reason: <span className="text-foreground">{t.description || t.note || "—"}</span></p>
                   <p className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleString()}</p>
                 </div>
-                <p className={`font-mono font-bold ${t.type === "purchase" ? "text-success" : "text-destructive"}`}>
+                <p className={`font-mono font-bold ${["purchase", "return", "adjustment"].includes(t.type) ? "text-success" : "text-destructive"}`}>
                   {t.type === "purchase" ? "+" : "−"}{t.quantity}
                 </p>
               </div>
@@ -574,7 +615,7 @@ setProductSuppliers(
           <div className="space-y-2">
             {related.map(r => (
               <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40">
-<Link to={`/inventory/product/${r.products.id}`}>                  <p className="text-sm font-medium"><span className="font-mono text-primary">{r.products.part_no ?? "#" + r.products.code}</span> {r.products.name}</p>
+                <Link to={`/inventory/product/${r.products.id}`}>                  <p className="text-sm font-medium"><span className="font-mono text-primary">{r.products.part_no ?? "#" + r.products.code}</span> {r.products.name}</p>
                   <p className="text-xs text-muted-foreground">Stock: {r.products.stock}</p>
                 </Link>
                 <div className="flex items-center gap-2">
@@ -601,29 +642,29 @@ setProductSuppliers(
       <Dialog open={qrLabelPreviewOpen} onOpenChange={setQrLabelPreviewOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Preview QR Label</DialogTitle>
+            <DialogTitle>Preview Label</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-xl border bg-slate-100 p-5 flex justify-center">
               <div
-                className="bg-white text-black shadow-sm border border-slate-300 flex items-center overflow-hidden"
-                style={{ width: "40mm", height: "25mm", gap: "2mm", padding: "2mm 1.5mm" }}
+                className="bg-white text-black shadow-sm border border-slate-300 flex items-start overflow-hidden"
+                style={{ width: "50mm", height: "30mm", gap: "2mm", padding: "2mm" }}
               >
                 {labelQrUrl ? (
                   <img
                     src={labelQrUrl}
                     alt="Product QR"
                     className="block shrink-0"
-                    style={{ width: "18mm", height: "18mm" }}
+                    style={{ width: "10mm", height: "10mm", flexBasis: "10mm" }}
                   />
                 ) : (
-                  <div className="shrink-0 bg-slate-200" style={{ width: "18mm", height: "18mm" }} />
+                  <div className="shrink-0 bg-slate-200" style={{ width: "10mm", height: "10mm", flexBasis: "10mm" }} />
                 )}
-                <div className="min-w-0 flex-1 leading-tight">
+                <div className="min-w-0 flex-1 leading-tight" style={{ paddingTop: "0.2mm", lineHeight: 1.05 }}>
                   <div
                     className="font-bold uppercase overflow-hidden"
                     style={{
-                      fontSize: "8.5px",
+                      fontSize: "11.5pt",
                       display: "-webkit-box",
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: "vertical",
@@ -632,11 +673,11 @@ setProductSuppliers(
                   >
                     {product.name}
                   </div>
-                  <div className="mt-1 truncate font-semibold" style={{ fontSize: "7px" }}>
+                  <div className="truncate font-bold" style={{ marginTop: "1.2mm", fontSize: "10.5pt" }}>
                     Part No: {qrLabelPartNumber}
                   </div>
                   {qrLabelCategory && (
-                    <div className="mt-1 truncate uppercase" style={{ fontSize: "7px" }}>
+                    <div className="truncate uppercase" style={{ marginTop: "0.8mm", fontSize: "7pt" }}>
                       {qrLabelCategory}
                     </div>
                   )}
@@ -645,7 +686,7 @@ setProductSuppliers(
             </div>
             <div className="grid gap-2 sm:flex sm:justify-end">
               <Button variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setQrLabelPreviewOpen(false)}>Close</Button>
-              <Button className="min-h-11 w-full sm:w-auto" onClick={printQrLabel}><Printer className="h-4 w-4 mr-2" />Print QR Label</Button>
+              <Button className="min-h-11 w-full sm:w-auto" onClick={printQrLabel}><Printer className="h-4 w-4 mr-2" />Print Label</Button>
             </div>
           </div>
         </DialogContent>

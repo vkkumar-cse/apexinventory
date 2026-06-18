@@ -10,7 +10,7 @@ import { Package, AlertTriangle, XCircle, Activity, ArrowRight, ClipboardList, S
 import { stockStatus } from "@/lib/queries";
 
 type Product = { id: string; code: number; part_no: string | null; name: string; stock: number; reorder_level: number; type: string };
-type Tx = { id: string; type: string; quantity: number; created_at: string; user_id: string | null; products: { code: number; part_no: string | null; name: string } | null };
+type Tx = { id: string; type: string; quantity: number; description: string | null; created_at: string; user_id: string | null; products: { code: number; part_no: string | null; name: string } | null };
 
 export default function Dashboard() {
   const { user, role, isAdmin } = useAuth();
@@ -24,8 +24,8 @@ export default function Dashboard() {
     document.title = "Dashboard · Apex Software";
     (async () => {
       const txQuery = isAdmin
-        ? supabase.from("transactions").select("id,type,quantity,created_at,user_id, products(code,part_no,name)").order("created_at", { ascending: false }).limit(15)
-        : supabase.from("transactions").select("id,type,quantity,created_at,user_id, products(code,part_no,name)").eq("user_id", user?.id ?? "").order("created_at", { ascending: false }).limit(15);
+        ? supabase.from("transactions").select("id,type,quantity,description,created_at,user_id, products(code,part_no,name)").order("created_at", { ascending: false }).limit(15)
+        : supabase.from("transactions").select("id,type,quantity,description,created_at,user_id, products(code,part_no,name)").eq("user_id", user?.id ?? "").order("created_at", { ascending: false }).limit(15);
 
       const [p, t, r, me] = await Promise.all([
         supabase.from("products").select("id,code,part_no,name,stock,reorder_level,type"),
@@ -86,6 +86,7 @@ export default function Dashboard() {
               <div key={t.id} className="flex min-w-0 items-center justify-between gap-3 p-3 rounded-lg bg-secondary/40">
                 <div className="min-w-0">
                   <p className="font-medium text-sm">{t.products ? <><span className="font-mono text-primary">{t.products.part_no ?? "#" + t.products.code}</span> {t.products.name}</> : "—"}</p>
+                  {t.description && <p className="text-xs text-muted-foreground">Reason: {t.description}</p>}
                   <p className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleString()}</p>
                 </div>
                 <p className="text-sm font-mono font-semibold text-destructive">−{t.quantity}</p>
@@ -124,11 +125,10 @@ export default function Dashboard() {
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
                 <p className="text-3xl font-bold mt-2">{value}</p>
               </div>
-              <div className={`h-10 w-10 shrink-0 rounded-lg grid place-items-center ${
-                tone === "warning" ? "bg-warning/10 text-warning" :
-                tone === "destructive" ? "bg-destructive/10 text-destructive" :
-                "bg-primary/10 text-primary"
-              }`}>
+              <div className={`h-10 w-10 shrink-0 rounded-lg grid place-items-center ${tone === "warning" ? "bg-warning/10 text-warning" :
+                  tone === "destructive" ? "bg-destructive/10 text-destructive" :
+                    "bg-primary/10 text-primary"
+                }`}>
                 <Icon className="h-5 w-5" />
               </div>
             </div>
