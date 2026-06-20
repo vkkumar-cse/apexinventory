@@ -8,8 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import {
+  AlertTriangle,
   Camera,
   Edit3,
   Loader2,
@@ -116,6 +127,7 @@ export default function EmployeeManagement() {
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
   const [registrationStep, setRegistrationStep] = useState(0);
   const [capturedDescriptors, setCapturedDescriptors] = useState<FaceDescriptor[]>([]);
+  const [faceResetProfile, setFaceResetProfile] = useState<EmployeeProfile | null>(null);
 
   const fetchProfiles = async () => {
     setLoading(true);
@@ -398,25 +410,29 @@ export default function EmployeeManagement() {
     toast.success("Face registration reset.");
   };
 
-  const resetFaceProfile = async (profile: EmployeeProfile) => {
+  const openResetFaceDialog = (profile: EmployeeProfile) => {
     if (!profile.face_registered_at) {
       toast.info("Face Registration Required");
       return;
     }
 
-    const employeeName = profile.full_name || profile.display_name || profile.email || "this employee";
-    if (!window.confirm(`Reset face profile for ${employeeName}? The worker must register their face again on next login.`)) return;
+    setFaceResetProfile(profile);
+  };
+
+  const confirmResetFaceProfile = async () => {
+    if (!faceResetProfile) return;
 
     setIsSubmitting(true);
     try {
       const { error } = await (supabase as any)
         .from("employee_face_profiles")
         .delete()
-        .eq("profile_id", profile.id);
+        .eq("profile_id", faceResetProfile.id);
 
       if (error) throw error;
 
       toast.success("Face profile reset. Re-registration is now required.");
+      setFaceResetProfile(null);
       await fetchProfiles();
     } catch (err: any) {
       toast.error(err.message || "Failed to reset face profile");
@@ -537,7 +553,7 @@ export default function EmployeeManagement() {
                           Edit
                         </Button>
                         {profile.face_registered_at ? (
-                          <Button variant="outline" className="min-h-11 w-full justify-center border-amber-500/30 text-amber-300 hover:bg-amber-500/10" onClick={() => resetFaceProfile(profile)} disabled={isSubmitting}>
+                          <Button variant="outline" className="min-h-11 w-full justify-center border-amber-500/30 text-amber-300 hover:bg-amber-500/10" onClick={() => openResetFaceDialog(profile)} disabled={isSubmitting}>
                             <Camera className="mr-2 h-4 w-4" />
                             Reset Face
                           </Button>
@@ -643,7 +659,7 @@ export default function EmployeeManagement() {
                               Edit
                             </Button>
                             {profile.face_registered_at ? (
-                              <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-amber-500/30 hover:bg-amber-500/10 text-amber-300" onClick={() => resetFaceProfile(profile)} disabled={isSubmitting}>
+                              <Button size="sm" variant="outline" className="h-8 w-full max-w-28 border-amber-500/30 hover:bg-amber-500/10 text-amber-300" onClick={() => openResetFaceDialog(profile)} disabled={isSubmitting}>
                                 <Camera className="h-3.5 w-3.5 mr-1" />
                                 Reset Face
                               </Button>
@@ -777,6 +793,37 @@ export default function EmployeeManagement() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(faceResetProfile)} onOpenChange={(open) => {
+        if (!open) setFaceResetProfile(null);
+      }}>
+        <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-md rounded-2xl border border-slate-800 bg-[#0B1528] p-5 text-white shadow-2xl sm:p-6">
+          <AlertDialogHeader className="items-center text-center sm:items-start sm:text-left">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-red-400">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <AlertDialogTitle className="text-xl font-extrabold text-white">
+              Reset Face Registration
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-6 text-slate-400">
+              This will remove the saved face registration for {faceResetProfile?.full_name || faceResetProfile?.display_name || faceResetProfile?.email || "this employee"}. The employee must register their face again before they can use face verification for attendance.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:space-x-0">
+            <AlertDialogCancel className="min-h-11 w-full border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white sm:w-auto" disabled={isSubmitting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11 w-full bg-red-600 font-bold text-white hover:bg-red-700 sm:w-auto"
+              disabled={isSubmitting}
+              onClick={confirmResetFaceProfile}
+            >
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Reset Face
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showFaceRegistration && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4">
