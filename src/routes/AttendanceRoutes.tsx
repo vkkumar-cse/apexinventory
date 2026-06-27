@@ -6,7 +6,6 @@ import AttendanceDashboard from "@/pages/modules/attendance/AttendanceDashboard"
 import CheckIn from "@/pages/modules/attendance/CheckIn";
 import AttendanceHistory from "@/pages/modules/attendance/AttendanceHistory";
 import AttendanceReports from "@/pages/modules/attendance/AttendanceReports";
-import Payroll from "@/pages/modules/attendance/Payroll";
 import AttendanceSites from "@/pages/modules/attendance/AttendanceSites";
 import NotFound from "@/pages/NotFound";
 
@@ -22,7 +21,6 @@ export default function AttendanceRoutes() {
       <Route path="history" element={<ProtectedRoute requiredModule="attendance"><AttendanceHistory /></ProtectedRoute>} />
       <Route path="reports" element={<ProtectedRoute adminOnly><AttendanceReports /></ProtectedRoute>} />
       <Route path="leaves" element={<ProtectedRoute requiredModule="attendance"><div>Leaves (Coming Soon)</div></ProtectedRoute>} />
-      <Route path="payroll" element={<ProtectedRoute requiredModule="attendance"><Payroll /></ProtectedRoute>} />
       <Route path="holidays" element={<ProtectedRoute requiredModule="attendance"><div>Holidays (Coming Soon)</div></ProtectedRoute>} />
       
       <Route path="*" element={<NotFound />} />

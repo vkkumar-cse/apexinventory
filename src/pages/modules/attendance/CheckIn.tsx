@@ -22,7 +22,16 @@ import {
   X,
 } from "lucide-react";
 import Webcam from "react-webcam";
-import { compareFaceDescriptors, getFaceDescriptorFromVideo, isValidFaceDescriptor, type FaceDescriptor } from "@/lib/faceRecognition";
+import {
+  averageFaceDescriptors,
+  FACE_MATCH_THRESHOLD,
+  getFaceErrorMessage,
+  getFaceFrameDescriptorFromVideo,
+  isValidFaceDescriptor,
+  REGISTRATION_STEPS,
+  verifyFaceAcrossFrames,
+  type FaceDescriptor,
+} from "@/lib/faceRecognition";
 
 type ProfileLite = {
   id: string;
@@ -64,7 +73,6 @@ type AttendanceSession = {
 
 const DEMO_MODE = false;
 
-const FACE_DISTANCE_THRESHOLD = 0.45;
 const DEFAULT_MINIMUM_FULL_DAY_HOURS = 8;
 
 type AttendanceSite = {
@@ -111,6 +119,8 @@ export default function CheckIn() {
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
+  const [registrationStep, setRegistrationStep] = useState(0);
+  const [capturedDescriptors, setCapturedDescriptors] = useState<FaceDescriptor[]>([]);
   const [pendingCoords, setPendingCoords] = useState<VerifiedGpsCoords | null>(null);
   const [pendingSiteValidation, setPendingSiteValidation] = useState<SiteValidation | null>(null);
   const [pendingOpenSession, setPendingOpenSession] = useState<AttendanceSession | null>(null);
@@ -153,6 +163,8 @@ export default function CheckIn() {
   };
 
   const logAttendanceState = (label: string, openSession: AttendanceSession | null, activeSite?: AttendanceSite | null) => {
+    if (!import.meta.env.DEV) return;
+
     console.log(label, {
       openSession,
       assignedSites: allowedSites,
@@ -263,7 +275,7 @@ export default function CheckIn() {
         if (assignedSitesError) throw assignedSitesError;
 
         const assignedSites = (assignedSitesRaw ?? []) as AttendanceSite[];
-        console.log("assignedSites", assignedSites);
+        if (import.meta.env.DEV) console.log("assignedSites", assignedSites);
 
         if (assignedSites.length > 0) {
           setAllowedSites(assignedSites);
@@ -275,7 +287,7 @@ export default function CheckIn() {
         return;
       }
 
-      console.log("assignedSites", []);
+      if (import.meta.env.DEV) console.log("assignedSites", []);
       const { data: defaultSite, error: defaultError } = await (supabase as any)
         .from("attendance_sites")
         .select("id,site_name,latitude,longitude,radius_meters,is_default,is_active")
@@ -413,7 +425,7 @@ export default function CheckIn() {
     if (error) throw error;
 
     const openSession = data as AttendanceSession | null;
-    console.log("openSession", openSession);
+    if (import.meta.env.DEV) console.log("openSession", openSession);
     return openSession;
   };
 
@@ -451,7 +463,7 @@ export default function CheckIn() {
 
       setCurrentCoords(coords);
       setSiteValidation(validation);
-      console.log("activeSite", validation.site);
+      if (import.meta.env.DEV) console.log("activeSite", validation.site);
       logAttendanceState("currentAttendanceState", openSession ?? null, validation.site);
 
       if (!validation.inside) {
@@ -730,12 +742,12 @@ export default function CheckIn() {
     const video = webcamRef.current?.video;
     
     if (!video) {
-      toast.error("Camera is not ready");
+      toast.error("Camera Not Ready");
       return;
     }
 
     if (cameraPermissionError) {
-      toast.error("Camera permission denied", {
+      toast.error("Camera Permission Denied", {
         description: "Camera access is required for face verification."
       });
       return;
@@ -757,25 +769,37 @@ export default function CheckIn() {
 
     setIsVerifyingFace(true);
     try {
-      const liveDescriptor = await getFaceDescriptorFromVideo(video);
-      const match = compareFaceDescriptors(liveDescriptor, faceProfile.face_descriptor);
-      
+      const match = await verifyFaceAcrossFrames(video, faceProfile.face_descriptor);
+      const threshold = FACE_MATCH_THRESHOLD;
       const faceDistance = match.distance;
       const faceScore = match.score;
       const faceMatchPercentage = Math.round(faceScore * 100);
-      const faceVerified = faceDistance <= FACE_DISTANCE_THRESHOLD;
+      const faceVerified = faceDistance <= threshold;
       
       const gpsVerified = pendingCoords !== null && pendingSiteValidation?.inside === true;
       const distanceMeters = pendingSiteValidation?.distance ?? null;
 
-      console.log("FINAL ATTENDANCE CHECK", {
-        gpsVerified,
-        distanceMeters,
-        faceDistance,
-        faceScore,
-        faceMatchPercentage,
-        faceVerified
-      });
+      if (import.meta.env.DEV) {
+        console.log("FACE VERIFICATION", {
+          faceDistance,
+          threshold,
+          matched: faceVerified,
+          detectionScore: match.detectionScore,
+          faceMatchPercentage,
+          processingTime: match.processingTime
+        });
+
+        console.log("FINAL ATTENDANCE CHECK", {
+          gpsVerified,
+          distanceMeters,
+          faceDistance,
+          faceScore,
+          faceMatchPercentage,
+          faceVerified,
+          framesChecked: match.framesChecked,
+          validFrames: match.validFrames,
+        });
+      }
 
       if (!faceVerified) {
         toast.error("Face Not Matched");
@@ -817,18 +841,29 @@ export default function CheckIn() {
       setPendingAction(null);
       await fetchTodayAttendance();
     } catch (error: any) {
-      const errorMessage = error.message || "";
-      if (errorMessage.includes("No face detected")) {
-        toast.error("No Face Detected", {
-          description: "Please position your face inside the camera frame."
+      if (import.meta.env.DEV) {
+        console.log("FACE VERIFICATION", {
+          faceDistance: null,
+          threshold: FACE_MATCH_THRESHOLD,
+          matched: false,
+          detectionScore: null,
+          faceMatchPercentage: 0,
+          processingTime: null
         });
-      } else if (errorMessage.includes("Multiple faces detected")) {
-        toast.error("Multiple Faces Detected", {
-          description: "Only one person should be visible during attendance."
-        });
-      } else {
-        toast.error("Face Not Matched");
       }
+
+      const message = getFaceErrorMessage(error);
+      toast.error(message, {
+        description: message === "Only One Face Allowed"
+          ? "Only one person should be visible."
+          : message === "Improve Lighting"
+            ? "Improve lighting, move closer, and look directly at the camera."
+            : message === "Move Closer To Camera"
+              ? "Move closer and keep your face centered."
+              : message === "No Face Detected"
+                ? "Please position your face inside the camera frame."
+                : undefined,
+      });
     } finally {
       setIsVerifyingFace(false);
       setIsSubmitting(false);
@@ -855,6 +890,8 @@ export default function CheckIn() {
     }
 
     setCameraPermissionError(null);
+    setRegistrationStep(0);
+    setCapturedDescriptors([]);
     setShowFaceRegistration(true);
   };
 
@@ -862,12 +899,14 @@ export default function CheckIn() {
     setShowFaceRegistration(false);
     setCameraPermissionError(null);
     setIsRegisteringFace(false);
+    setRegistrationStep(0);
+    setCapturedDescriptors([]);
   };
 
-  const registerFaceProfile = async () => {
+  const captureFaceSample = async () => {
     const video = webcamRef.current?.video;
     if (!currentProfileId || !video) {
-      toast.error("Camera is not ready");
+      toast.error("Camera Not Ready");
       return;
     }
 
@@ -882,21 +921,75 @@ export default function CheckIn() {
         return;
       }
 
-      const descriptor = await getFaceDescriptorFromVideo(video);
-      if (!isValidFaceDescriptor(descriptor)) {
-        toast.error("Face capture failed");
+      const frame = await getFaceFrameDescriptorFromVideo(video);
+      const newDescriptors = [...capturedDescriptors, frame.descriptor];
+      setCapturedDescriptors(newDescriptors);
+
+      if (registrationStep < REGISTRATION_STEPS.length - 1) {
+        setRegistrationStep(registrationStep + 1);
+        toast.success(`Captured ${REGISTRATION_STEPS[registrationStep].label}`);
+      } else {
+        setRegistrationStep(REGISTRATION_STEPS.length);
+        toast.success("All face samples captured");
+      }
+    } catch (error: any) {
+      const message = getFaceErrorMessage(error);
+      toast.error(message, {
+        description: message === "Only One Face Allowed"
+          ? "Only one person should be visible during registration."
+          : message === "Improve Lighting"
+            ? "Improve lighting, move closer, and look directly at the camera."
+            : message === "Move Closer To Camera"
+              ? "Move closer and keep your face centered."
+              : message === "No Face Detected"
+                ? "Please position your face inside the camera frame."
+                : undefined,
+      });
+    } finally {
+      setIsRegisteringFace(false);
+    }
+  };
+
+  const registerFaceProfile = async () => {
+    if (!currentProfileId) {
+      toast.error("Camera Not Ready");
+      return;
+    }
+
+    if (capturedDescriptors.length !== REGISTRATION_STEPS.length || !capturedDescriptors.every(isValidFaceDescriptor)) {
+      toast.error("Please capture all 5 face samples first.");
+      return;
+    }
+
+    setIsRegisteringFace(true);
+    try {
+      const latestFaceProfile = await fetchLatestFaceProfile();
+      if (isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+        toast.error("Face already registered", {
+          description: "Admin reset is required before re-registration.",
+        });
+        resetFaceRegistrationCamera();
         return;
       }
 
+      const averageDescriptor = averageFaceDescriptors(capturedDescriptors);
       const { error } = await (supabase as any)
         .from("employee_face_profiles")
         .insert({
           profile_id: currentProfileId,
-          face_descriptor: descriptor,
+          face_descriptor: averageDescriptor,
           face_image_path: null,
         });
 
       if (error) throw error;
+
+      if (import.meta.env.DEV) {
+        console.log("FACE REGISTRATION", {
+          samplesCaptured: capturedDescriptors.length,
+          descriptorLength: averageDescriptor.length,
+          averagedDescriptorCreated: true
+        });
+      }
 
       toast.success("Face Registered", {
         description: "Verified. You can now mark attendance.",
@@ -909,20 +1002,18 @@ export default function CheckIn() {
         toast.error("Face already registered", {
           description: "Admin reset is required before re-registration.",
         });
-      } else if (message.includes("No face detected")) {
-        toast.error("No Face Detected", {
-          description: "Please position your face inside the camera frame.",
-        });
-      } else if (message.includes("Multiple faces detected")) {
-        toast.error("Multiple Faces Detected", {
-          description: "Only one person should be visible during registration.",
-        });
       } else {
-        toast.error(message || "Face registration failed");
+        toast.error("Face registration failed");
       }
     } finally {
       setIsRegisteringFace(false);
     }
+  };
+
+  const resetFaceCapture = () => {
+    setRegistrationStep(0);
+    setCapturedDescriptors([]);
+    toast.success("Face registration reset.");
   };
 
 const formatISTTime = (time: string | null) => {
@@ -1449,7 +1540,7 @@ const formatISTTime = (time: string | null) => {
 
             {cameraPermissionError ? (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 mb-4">
-                <p className="font-semibold mb-2">Camera permission denied</p>
+                <p className="font-semibold mb-2">Camera Permission Denied</p>
                 <p className="text-sm">{cameraPermissionError}</p>
                 <Button
                   onClick={resetFaceRegistrationCamera}
@@ -1462,8 +1553,43 @@ const formatISTTime = (time: string | null) => {
             ) : (
               <div className="space-y-4">
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                  Capture your face once. After this, only an admin reset can allow re-registration.
+                  Capture 5 guided face samples. After this, only an admin reset can allow re-registration.
                 </div>
+                <div className="grid grid-cols-5 gap-1.5 pb-2 sm:gap-2">
+                  {REGISTRATION_STEPS.map((step, idx) => {
+                    const isCaptured = idx < capturedDescriptors.length;
+                    const isCurrent = idx === registrationStep;
+                    return (
+                      <div
+                        key={step.label}
+                        className={`flex flex-col items-center rounded-lg border p-1.5 text-center transition-all sm:p-2 ${
+                          isCaptured
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : isCurrent
+                              ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                              : "bg-slate-950/40 border-slate-800 text-slate-500"
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{idx + 1}</span>
+                        <span className="mt-0.5 hidden text-[9px] font-medium leading-tight min-[390px]:block">{step.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {registrationStep < REGISTRATION_STEPS.length ? (
+                  <div className="bg-[#162A4E] border border-blue-500/20 rounded-xl p-3.5 text-center text-sm shadow-md">
+                    <span className="text-xs uppercase tracking-wider font-extrabold text-blue-400">
+                      Step {registrationStep + 1}/{REGISTRATION_STEPS.length}
+                    </span>
+                    <p className="mt-1 text-slate-200 font-semibold">{REGISTRATION_STEPS[registrationStep].label}</p>
+                    <p className="mt-1 text-xs text-slate-400">{REGISTRATION_STEPS[registrationStep].instruction}</p>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center text-sm shadow-md">
+                    <span className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">All Poses Captured</span>
+                    <p className="mt-1 text-slate-200 font-semibold">Ready to save the averaged face profile.</p>
+                  </div>
+                )}
                 <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
                   <Webcam
                     ref={webcamRef}
@@ -1472,7 +1598,7 @@ const formatISTTime = (time: string | null) => {
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
-                      setCameraPermissionError("Camera permission denied");
+                      setCameraPermissionError("Camera Permission Denied");
                     }}
                   />
                 </div>
@@ -1480,14 +1606,35 @@ const formatISTTime = (time: string | null) => {
                   Keep one face centered and well lit. Face images are not stored.
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Button
-                    onClick={registerFaceProfile}
-                    className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                    disabled={isRegisteringFace}
-                  >
-                    {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
-                    Save Face Profile
-                  </Button>
+                  {registrationStep < REGISTRATION_STEPS.length ? (
+                    <Button
+                      onClick={captureFaceSample}
+                      className="min-h-11 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                      disabled={isRegisteringFace}
+                    >
+                      {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
+                      Capture
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={registerFaceProfile}
+                      className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                      disabled={isRegisteringFace}
+                    >
+                      {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
+                      Save Face Profile
+                    </Button>
+                  )}
+                  {capturedDescriptors.length > 0 && (
+                    <Button
+                      onClick={resetFaceCapture}
+                      variant="outline"
+                      className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"
+                      disabled={isRegisteringFace}
+                    >
+                      Reset
+                    </Button>
+                  )}
                   <Button
                     onClick={resetFaceRegistrationCamera}
                     variant="outline"
@@ -1519,7 +1666,7 @@ const formatISTTime = (time: string | null) => {
 
             {cameraPermissionError ? (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 mb-4">
-                <p className="font-semibold mb-2">Camera permission denied</p>
+                <p className="font-semibold mb-2">Camera Permission Denied</p>
                 <p className="text-sm">{cameraPermissionError}</p>
                 <Button
                   onClick={resetFaceCamera}
@@ -1539,7 +1686,7 @@ const formatISTTime = (time: string | null) => {
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
-                      setCameraPermissionError("Camera permission denied");
+                      setCameraPermissionError("Camera Permission Denied");
                     }}
                   />
                 </div>

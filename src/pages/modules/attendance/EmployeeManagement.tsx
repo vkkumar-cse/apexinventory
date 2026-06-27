@@ -33,7 +33,14 @@ import {
   X,
 } from "lucide-react";
 import Webcam from "react-webcam";
-import { getFaceDescriptorFromVideo, isValidFaceDescriptor, type FaceDescriptor } from "@/lib/faceRecognition";
+import {
+  averageFaceDescriptors,
+  getFaceErrorMessage,
+  getFaceFrameDescriptorFromVideo,
+  isValidFaceDescriptor,
+  REGISTRATION_STEPS,
+  type FaceDescriptor,
+} from "@/lib/faceRecognition";
 
 type ProfileStatus = "pending" | "approved" | "rejected";
 type ProfileRole = "admin" | "worker";
@@ -87,24 +94,6 @@ const emptyForm: ProfileForm = {
   designation: "",
   role: "worker",
   is_active: true,
-};
-
-const REGISTRATION_STEPS = [
-  { label: "Straight Face", instruction: "Look directly into the camera." },
-  { label: "Slight Left", instruction: "Turn your head slightly to the left." },
-  { label: "Slight Right", instruction: "Turn your head slightly to the right." },
-  { label: "Slight Up", instruction: "Tilt your head slightly upwards." },
-  { label: "Slight Down", instruction: "Tilt your head slightly downwards." },
-];
-
-const averageFaceDescriptors = (descriptors: FaceDescriptor[]): FaceDescriptor => {
-  const averageDescriptor = new Array(128).fill(0);
-
-  for (let i = 0; i < averageDescriptor.length; i++) {
-    averageDescriptor[i] = descriptors.reduce((sum, descriptor) => sum + descriptor[i], 0) / descriptors.length;
-  }
-
-  return averageDescriptor;
 };
 
 const inputClass = "bg-[#162A4E] border-slate-700/80 text-white placeholder:text-slate-500 focus-visible:ring-blue-500 focus-visible:border-blue-500 h-10";
@@ -343,14 +332,14 @@ export default function EmployeeManagement() {
   const captureFaceSample = async () => {
     const video = webcamRef.current?.video;
     if (!selectedProfileId || !video) {
-      toast.error("Camera is not ready");
+      toast.error("Camera Not Ready");
       return;
     }
 
     setIsRegisteringFace(true);
     try {
-      const descriptor = await getFaceDescriptorFromVideo(video);
-      const newDescriptors = [...capturedDescriptors, descriptor];
+      const frame = await getFaceFrameDescriptorFromVideo(video);
+      const newDescriptors = [...capturedDescriptors, frame.descriptor];
       setCapturedDescriptors(newDescriptors);
 
       if (registrationStep < REGISTRATION_STEPS.length - 1) {
@@ -361,7 +350,18 @@ export default function EmployeeManagement() {
         toast.success("All face samples captured. Save the face profile to finish.");
       }
     } catch (err: any) {
-      toast.error(err.message || "Face capture failed. Keep one face clearly visible and try again.");
+      const message = getFaceErrorMessage(err);
+      toast.error(message, {
+        description: message === "Only One Face Allowed"
+          ? "Only one person should be visible during registration."
+          : message === "Improve Lighting"
+            ? "Improve lighting, move closer, and look directly at the camera."
+            : message === "Move Closer To Camera"
+              ? "Move closer and keep your face centered."
+              : message === "No Face Detected"
+                ? "Please position your face inside the camera frame."
+                : undefined,
+      });
     } finally {
       setIsRegisteringFace(false);
     }
@@ -393,12 +393,20 @@ export default function EmployeeManagement() {
 
       if (error) throw error;
 
+      if (import.meta.env.DEV) {
+        console.log("FACE REGISTRATION", {
+          samplesCaptured: capturedDescriptors.length,
+          descriptorLength: averageDescriptor.length,
+          averagedDescriptorCreated: true
+        });
+      }
+
       toast.success("Face profile registered");
       setShowFaceRegistration(false);
       setSelectedProfileId(null);
       await fetchProfiles();
     } catch (err: any) {
-      toast.error(err.message || "Face registration failed");
+      toast.error("Face registration failed");
     } finally {
       setIsRegisteringFace(false);
     }
@@ -840,7 +848,7 @@ export default function EmployeeManagement() {
 
             {cameraPermissionError ? (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 mb-4">
-                <p className="font-semibold mb-2">Camera permission denied</p>
+                <p className="font-semibold mb-2">Camera Permission Denied</p>
                 <p className="text-sm">{cameraPermissionError}</p>
               </div>
             ) : (
@@ -887,7 +895,7 @@ export default function EmployeeManagement() {
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
-                      setCameraPermissionError("Camera permission denied");
+                      setCameraPermissionError("Camera Permission Denied");
                     }}
                   />
                 </div>

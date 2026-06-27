@@ -856,7 +856,8 @@ function PrintPreview({
 
           .print-preview-document .print-header {
             width: 100%;
-            padding: 6mm 8mm;
+            min-height: 52mm;
+            padding: 8mm 12mm 7mm;
             border-bottom: 1px solid #000;
             text-align: center;
             flex-shrink: 0;
@@ -864,11 +865,39 @@ function PrintPreview({
             background: white;
             color: black;
             margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .print-preview-document .print-company-name {
+            margin: 0 0 3mm;
+            font-size: 20pt;
+            line-height: 1.12;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0;
+          }
+
+          .print-preview-document .print-company-address {
+            margin: 0;
+            font-size: 9pt;
+            line-height: 1.3;
+            text-align: center;
+            max-width: 135mm;
+          }
+
+          .print-preview-document .print-company-gstin {
+            margin: 3.5mm 0 0;
+            font-size: 9.5pt;
+            line-height: 1.25;
+            font-weight: 700;
           }
 
           .print-preview-document .print-title {
             width: 100%;
-            padding: 3mm 8mm;
+            padding: 3.5mm 8mm;
             background-color: #f3f4f6;
             border-bottom: 1px solid #000;
             font-weight: bold;
@@ -1086,11 +1115,14 @@ function PrintContent({
     <div className="dc-print-page">
       {/* Company Header */}
       <div className="print-header">
-        <h1 className="text-lg font-bold uppercase tracking-wide">Metric Measurement Technologies</h1>
-        <p className="text-[8pt] mt-0.5">55, Chennai Green City Paruthipattu, Avadi Ch - 71</p>
-        <p className="text-[8pt]">Email: csd@metric.co.in, metricmeasurement2007@gmail.com</p>
-        <p className="text-[8pt]">Phone: 04426560542 / 8754432261/62/63</p>
-        <p className="text-[8pt] font-bold mt-0.5">GSTIN: 33AAOFM6960B1ZA</p>
+        <h1 className="print-company-name">APEX INDUSTRIAL METROLOGY LLP</h1>
+        <div className="print-company-address">
+          <p>Shed No-2, Women's Industrial Park,</p>
+          <p>Plot No.180, SIDCO,</p>
+          <p>Kattur, Thirumullaivoyal,</p>
+          <p>Tamil Nadu – 600062</p>
+        </div>
+        <p className="print-company-gstin">GSTIN : 33ACMFA9989N1ZC</p>
       </div>
 
       {/* Title Row */}

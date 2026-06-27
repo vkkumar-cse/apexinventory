@@ -15,11 +15,9 @@ import {
   Hourglass, 
   CalendarDays, 
   MapPin, 
-  DollarSign, 
   ArrowRight,
   TrendingUp,
   History,
-  Coins,
   Loader2
 } from "lucide-react";
 
@@ -145,11 +143,6 @@ export default function AttendanceDashboard() {
     halfDays: 0,
     totalWorkingHours: 0,
   });
-  const [payrollSummary, setPayrollSummary] = useState({
-    generatedRows: 0,
-    totalPayable: 0,
-    myPayable: 0,
-  });
 
   const getTodayDateString = () => {
     const now = new Date();
@@ -189,7 +182,6 @@ export default function AttendanceDashboard() {
     setLoading(true);
     try {
       const today = getTodayDateString();
-      const payrollMonth = `${today.slice(0, 7)}-01`;
 
       if (isAdmin) {
         // --- ADMIN DASHBOARD DATA ---
@@ -295,23 +287,10 @@ export default function AttendanceDashboard() {
           activeSessions: value.activeSessions,
         })));
 
-        const { data: payrollRaw } = await supabase
-          .from("monthly_payroll" as any)
-          .select("monthly_payable")
-          .eq("payroll_month", payrollMonth);
-
-        const payrollRows = (payrollRaw ?? []) as any[];
-        setPayrollSummary({
-          generatedRows: payrollRows.length,
-          totalPayable: payrollRows.reduce((total, row) => total + Number(row.monthly_payable ?? 0), 0),
-          myPayable: 0,
-        });
-
       } else {
         // --- WORKER DASHBOARD DATA ---
         setWorkerTodayStatus({ checkedIn: false, checkInTime: null, checkedOut: false, checkOutTime: null, status: null, faceVerified: false, faceMatchScore: null, siteName: null });
         setWorkerSummary({ presentDays: 0, lateDays: 0, halfDays: 0, totalWorkingHours: 0 });
-        setPayrollSummary({ generatedRows: 0, totalPayable: 0, myPayable: 0 });
         setWorkerTodaySessions([]);
         setWorkerAssignedSites([]);
 
@@ -350,7 +329,6 @@ export default function AttendanceDashboard() {
 
           if (todaySessionsError) throw todaySessionsError;
           setWorkerTodaySessions((todaySessionsRaw ?? []) as AttendanceSession[]);
-          // Resolve worker employee record (UUID) — cast to any
             // Fetch today's attendance — cast to any
             const { data: todayRaw } = await supabase
               .from("attendance" as any)
@@ -406,18 +384,6 @@ export default function AttendanceDashboard() {
               });
             }
 
-            const { data: payrollRaw } = await supabase
-              .from("monthly_payroll" as any)
-              .select("monthly_payable")
-              .eq("employee_id", profileId)
-              .eq("payroll_month", payrollMonth)
-              .maybeSingle();
-
-            setPayrollSummary({
-              generatedRows: payrollRaw ? 1 : 0,
-              totalPayable: 0,
-              myPayable: Number((payrollRaw as any)?.monthly_payable ?? 0),
-            });
           }
       }
     } catch (e) {
@@ -447,9 +413,6 @@ export default function AttendanceDashboard() {
       </Badge>
     );
   };
-
-  const formatMoney = (value: number) =>
-    `₹${Number(value ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
   if (loading) {
     return (
@@ -620,33 +583,6 @@ export default function AttendanceDashboard() {
                 <CardContent className="pt-4 text-center py-6 text-xs text-slate-500">
                   <p className="font-medium">No leave requests requiring approval</p>
                   <p className="text-[10px] text-slate-550 mt-1.5 italic">Future Feature: Leave requests lifecycle management</p>
-                </CardContent>
-              </Card>
-
-              {/* Payroll Summary */}
-              <Card className="bg-slate-900/50 border-slate-800 text-white shadow-xl">
-                <CardHeader className="pb-3 border-b border-slate-800/80">
-                  <CardTitle className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
-                    Payroll Overview
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4 py-6 text-xs text-slate-400">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                    <span>Generated Rows</span>
-                    <span className="font-bold text-slate-100">{payrollSummary.generatedRows}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2">
-                    <span>Total Payable</span>
-                    <span className="font-extrabold text-emerald-400">{formatMoney(payrollSummary.totalPayable)}</span>
-                  </div>
-                  <Button
-                    onClick={() => navigate("/attendance/payroll")}
-                    variant="outline"
-                    className="w-full mt-4 border-slate-700 text-slate-300 hover:bg-slate-800"
-                  >
-                    Open Payroll
-                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -826,34 +762,8 @@ export default function AttendanceDashboard() {
                 )}
               </Card>
 
-              <Card className="bg-slate-900/50 border-slate-800 text-white shadow-xl p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                      <Coins className="w-5 h-5 text-emerald-400" />
-                      Payroll Summary
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-1">
-                      {payrollSummary.generatedRows > 0 ? "Current month payroll generated." : "Current month payroll has not been generated yet."}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Monthly Payable</div>
-                      <div className="text-2xl font-extrabold text-emerald-400">{formatMoney(payrollSummary.myPayable)}</div>
-                    </div>
-                    <Button
-                      onClick={() => navigate("/attendance/payroll")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                    >
-                      View Payroll
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-
               {/* Shortcut buttons section */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
                 <Card className="bg-slate-900/40 border-slate-800 hover:border-slate-700 transition-all p-4 cursor-pointer flex justify-between items-center group" onClick={() => navigate("/attendance/history")}>
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-slate-800 rounded-lg text-indigo-400 group-hover:bg-indigo-500/10 transition-colors">
@@ -877,20 +787,7 @@ export default function AttendanceDashboard() {
                       <p className="text-[10px] text-slate-400 mt-0.5">File leave, view status shortcuts</p>
                     </div>
                   </div>
-                  <ArrowRight className="h-4 w-4 text-slate-500 group-hover:translate-x-1 transition-transform" />
-                </Card>
-
-                <Card className="bg-slate-900/40 border-slate-800 hover:border-slate-700 transition-all p-4 cursor-pointer flex justify-between items-center group" onClick={() => navigate("/attendance/payroll")}>
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-slate-800 rounded-lg text-emerald-400 group-hover:bg-emerald-500/10 transition-colors">
-                      <Coins className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-200">My Payroll Details</h4>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Salary summary & payslip projections</p>
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-slate-500 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="h-4 w-4 text-slate-555 group-hover:translate-x-1 transition-transform" />
                 </Card>
               </div>
           </>
