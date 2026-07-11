@@ -808,12 +808,13 @@ function PrintPreview({
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent
-        className="w-[calc(100vw-1rem)] max-w-[850px] p-0 border-none bg-white shadow-lg overflow-hidden"
-        style={{ width: "min(850px, 96vw)", maxHeight: "90vh", boxSizing: "border-box" }}
+        className="w-[95vw] max-w-[95vw] p-0 border-none bg-white shadow-lg overflow-hidden flex flex-col"
+        style={{ width: "min(900px, 95vw)", height: "90vh", maxHeight: "90vh", boxSizing: "border-box" }}
       >
         <style>{`
           .print-preview-scroll {
-            max-height: calc(90vh - 73px);
+            flex: 1;
+            min-height: 0;
             overflow-y: auto;
             overflow-x: hidden;
             background: #e5e7eb;
@@ -1021,6 +1022,14 @@ function PrintPreview({
             width: 60mm;
           }
 
+          .print-preview-footer {
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
+            background: white;
+            border-top: 1px solid #ddd;
+          }
+
           @media print {
             html,
             body {
@@ -1054,6 +1063,10 @@ function PrintPreview({
             }
           }
         `}</style>
+
+        <DialogHeader className="no-print flex-shrink-0 px-5 py-4 border-b bg-white">
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         
         <div className="print-preview-scroll">
           <div className="print-preview-document" ref={printRef}>
@@ -1073,9 +1086,9 @@ function PrintPreview({
         </div>
         
         {/* Action Buttons */}
-        <div className="flex gap-2 justify-end p-4 no-print bg-slate-50 border-t">
+        <div className="print-preview-footer flex flex-shrink-0 gap-2 justify-end p-4 no-print">
           <Button variant="secondary" onClick={onClose} className="no-print">
-            Close
+            Back
           </Button>
           <Button onClick={() => handlePrint()} className="no-print">Print</Button>
         </div>

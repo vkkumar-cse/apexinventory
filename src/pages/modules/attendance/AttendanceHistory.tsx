@@ -2,9 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, CheckCircle2, Clock, Loader2, MapPin, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Download,
+  FileText,
+  Loader2,
+  MapPin,
+  Search,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { formatDurationHours } from "@/lib/formatDuration";
 
 type ProfileLite = {
@@ -39,9 +55,10 @@ type AttendanceSite = {
   site_name: string;
 };
 
+const PAGE_SIZE = 12;
+
 const formatISTTime = (time: string | null) => {
   if (!time) return "-";
-
   return new Date(time).toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -57,30 +74,32 @@ const formatDate = (date: string) =>
     year: "numeric",
   });
 
+const initialsFor = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "AP";
+
+const csvEscape = (value: string | number | null | undefined) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
 const getStatusBadge = (status: string | null) => {
   const statusValue = (status || "present").toLowerCase();
+  const styles: Record<string, string> = {
+    present: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    open: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    late: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    "half-day": "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+    absent: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  };
 
-  if (statusValue === "present") {
-    return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">Present</Badge>;
-  }
+  const label = statusValue === "half-day"
+    ? "Half Day"
+    : statusValue.charAt(0).toUpperCase() + statusValue.slice(1);
 
-  if (statusValue === "open") {
-    return <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">Open</Badge>;
-  }
-
-  if (statusValue === "completed") {
-    return <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">Completed</Badge>;
-  }
-
-  if (statusValue === "late") {
-    return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs">Late</Badge>;
-  }
-
-  if (statusValue === "half-day") {
-    return <Badge className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs">Half Day</Badge>;
-  }
-
-  return <Badge className="bg-slate-800 text-slate-300 border border-slate-700 text-xs">{status || "Present"}</Badge>;
+  return <Badge className={`${styles[statusValue] ?? "bg-slate-800 text-slate-300 border-slate-700"} border text-xs`}>{label}</Badge>;
 };
 
 export default function AttendanceHistory() {
@@ -95,19 +114,51 @@ export default function AttendanceHistory() {
   const [siteFilter, setSiteFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
 
   const profilesById = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
 
   const getProfileLabel = (profile: ProfileLite) =>
-    [profile.full_name || profile.display_name || profile.email || "Unknown Employee", profile.employee_code]
-      .filter(Boolean)
-      .join(" - ");
+    [profile.full_name || profile.display_name || profile.email || "Unknown Employee", profile.employee_code].filter(Boolean).join(" - ");
 
   const getSessionHours = (record: AttendanceRecord) => {
     if (!record.check_in || !record.check_out) return null;
     const diffMs = new Date(record.check_out).getTime() - new Date(record.check_in).getTime();
     return Number(Math.max(0, diffMs / (1000 * 60 * 60)).toFixed(2));
   };
+
+  const getEmployeeName = (record: AttendanceRecord) => {
+    const profile = profilesById.get(record.profile_id);
+    return profile?.full_name || profile?.display_name || profile?.email || "Unknown Employee";
+  };
+
+  const getGpsDistance = (record: AttendanceRecord) => {
+    const distance = record.check_out_distance_meters ?? record.check_in_distance_meters;
+    return distance === null || distance === undefined ? "-" : `${Math.round(distance)}m`;
+  };
+
+  const filteredAttendance = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return attendance;
+
+    return attendance.filter((record) => {
+      const profile = profilesById.get(record.profile_id);
+      const haystack = [
+        getEmployeeName(record),
+        profile?.employee_code,
+        profile?.email,
+        record.site_name_snapshot,
+        record.status,
+        record.attendance_date,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [attendance, profilesById, searchTerm]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredAttendance.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedAttendance = filteredAttendance.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const loadAttendance = async () => {
     setLoading(true);
@@ -134,22 +185,12 @@ export default function AttendanceHistory() {
       const profileIds = Array.from(new Set(nextAttendance.map((record) => record.profile_id)));
       const [{ data: profileRows, error: profileError }, { data: allProfileRows, error: allProfilesError }, { data: siteRows, error: sitesError }] = await Promise.all([
         profileIds.length > 0
-          ? supabase
-            .from("profiles" as any)
-            .select("id, employee_code, full_name, display_name, email")
-            .in("id", profileIds)
+          ? supabase.from("profiles" as any).select("id, employee_code, full_name, display_name, email").in("id", profileIds)
           : Promise.resolve({ data: [], error: null }),
         isAdmin
-          ? supabase
-            .from("profiles" as any)
-            .select("id, employee_code, full_name, display_name, email")
-            .eq("status", "approved")
-            .order("full_name", { ascending: true })
+          ? supabase.from("profiles" as any).select("id, employee_code, full_name, display_name, email").eq("status", "approved").order("full_name", { ascending: true })
           : Promise.resolve({ data: [], error: null }),
-        (supabase as any)
-          .from("attendance_sites")
-          .select("id, site_name")
-          .order("site_name", { ascending: true }),
+        (supabase as any).from("attendance_sites").select("id, site_name").order("site_name", { ascending: true }),
       ]);
 
       if (profileError) throw profileError;
@@ -165,22 +206,13 @@ export default function AttendanceHistory() {
     }
   };
 
-  const deleteAttendanceRecord = async (recordId: string) => {
-    const { error } = await supabase
-      .from("attendance_sessions" as any)
-      .delete()
-      .eq("id", recordId);
-
-    if (error) throw error;
-  };
-
-  // DEVELOPMENT ONLY - Remove delete functionality before production deployment
   const deleteAttendance = async (recordId: string) => {
     if (!isAdmin) return;
 
     setDeletingId(recordId);
     try {
-      await deleteAttendanceRecord(recordId);
+      const { error } = await supabase.from("attendance_sessions" as any).delete().eq("id", recordId);
+      if (error) throw error;
       toast.success("Attendance record deleted.");
       await loadAttendance();
     } catch (error: any) {
@@ -190,225 +222,205 @@ export default function AttendanceHistory() {
     }
   };
 
+  const exportCsv = () => {
+    const headers = ["Employee", "Employee Code", "Date", "Site", "Working Hours", "Check-in", "Check-out", "GPS Distance", "Device Used", "Attendance Status", "Verification Status", "Face Match %"];
+    const rows = filteredAttendance.map((record) => {
+      const profile = profilesById.get(record.profile_id);
+      return [
+        getEmployeeName(record),
+        profile?.employee_code ?? "",
+        formatDate(record.attendance_date),
+        record.site_name_snapshot || "-",
+        formatDurationHours(getSessionHours(record)),
+        formatISTTime(record.check_in),
+        formatISTTime(record.check_out),
+        getGpsDistance(record),
+        "Browser",
+        record.status || "present",
+        record.face_verified ? "Verified" : "Pending",
+        record.face_match_score !== null && record.face_match_score !== undefined ? Math.round(record.face_match_score * 100) : "",
+      ];
+    });
+
+    const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `attendance-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
-    document.title = "Attendance History · Apex Software";
+    document.title = "Attendance History - Apex Software";
     loadAttendance();
   }, [isAdmin, user?.id, employeeFilter, siteFilter, dateFrom, dateTo]);
 
-  return (
-    <div className="p-4 md:p-8 space-y-6 text-white min-h-[calc(100vh-100px)] bg-[#0B1528] rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, employeeFilter, siteFilter, dateFrom, dateTo]);
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10 border-b border-slate-800/80 pb-5">
+  const renderVerification = (record: AttendanceRecord) => (
+    <div className="flex flex-col gap-1">
+      <Badge className={`w-fit border text-xs ${record.face_verified ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-slate-800 text-slate-400 border-slate-700"}`}>
+        <ShieldCheck className="mr-1 h-3 w-3" />
+        {record.face_verified ? "Verified" : "Pending"}
+      </Badge>
+      <span className="text-xs text-slate-500">
+        Face Match: {record.face_match_score !== null && record.face_match_score !== undefined ? `${Math.round(record.face_match_score * 100)}%` : "-"}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="min-h-[calc(100vh-100px)] space-y-5 rounded-2xl border border-slate-800 bg-[#0B1528] p-4 text-white shadow-2xl md:p-6">
+      <div className="flex flex-col gap-4 border-b border-slate-800/80 pb-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <CalendarDays className="h-8 w-8 text-blue-500" />
+          <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight md:text-3xl">
+            <CalendarDays className="h-7 w-7 text-blue-500" />
             Attendance History
           </h1>
-          <p className="text-slate-400 mt-1">
-            {isAdmin ? "Review all attendance sessions across employees and sites." : "Review your attendance sessions and timesheets."}
-          </p>
+          <p className="mt-1 text-sm text-slate-400">{filteredAttendance.length} records shown</p>
         </div>
-        <Badge className={isAdmin ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-slate-800 text-slate-300 border border-slate-700"}>
-          {isAdmin ? "Admin View" : "Worker View"}
-        </Badge>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={exportCsv} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button type="button" variant="outline" onClick={() => window.print()} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+            <FileText className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
+        </div>
       </div>
 
-      <div className="relative z-10 grid gap-3 rounded-2xl border border-slate-800/80 bg-[#13223D]/40 p-4 md:grid-cols-4">
+      <div className="grid gap-3 rounded-xl border border-slate-800 bg-[#13223D]/50 p-3 md:grid-cols-2 lg:grid-cols-6">
+        <div className="relative lg:col-span-2">
+          <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-500" />
+          <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search employee, site, status" className="border-slate-700 bg-[#0B1528] pl-9 text-slate-100" />
+        </div>
         {isAdmin && (
-          <select
-            value={employeeFilter}
-            onChange={(event) => setEmployeeFilter(event.target.value)}
-            className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
-          >
+          <select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)} className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200">
             <option value="all">All employees</option>
-            {allProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>{getProfileLabel(profile)}</option>
-            ))}
+            {allProfiles.map((profile) => <option key={profile.id} value={profile.id}>{getProfileLabel(profile)}</option>)}
           </select>
         )}
-        <select
-          value={siteFilter}
-          onChange={(event) => setSiteFilter(event.target.value)}
-          className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
-        >
+        <select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)} className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200">
           <option value="all">All sites</option>
-          {sites.map((site) => (
-            <option key={site.id} value={site.id}>{site.site_name}</option>
-          ))}
+          {sites.map((site) => <option key={site.id} value={site.id}>{site.site_name}</option>)}
         </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(event) => setDateFrom(event.target.value)}
-          className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(event) => setDateTo(event.target.value)}
-          className="h-10 rounded-md border border-slate-700 bg-[#0B1528] px-3 text-sm text-slate-200"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setEmployeeFilter("all");
-            setSiteFilter("all");
-            setDateFrom("");
-            setDateTo("");
-          }}
-          className="border-slate-700 text-slate-300 hover:bg-slate-800 md:col-span-4"
-        >
-          Clear Filters
-        </Button>
+        <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="border-slate-700 bg-[#0B1528] text-slate-200" />
+        <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="border-slate-700 bg-[#0B1528] text-slate-200" />
       </div>
 
-      <div className="relative z-10 rounded-2xl border border-slate-800/80 bg-[#13223D]/40 p-4 shadow-2xl backdrop-blur-sm sm:p-6">
-        {loading ? (
-          <div className="flex justify-center items-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          </div>
-        ) : attendance.length === 0 ? (
-          <div className="text-center py-16 border border-dashed border-slate-800 rounded-xl bg-[#0B1528]/40">
-            <Clock className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400 font-medium">No attendance records found.</p>
-          </div>
-        ) : (
-          <>
+      {loading ? (
+        <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>
+      ) : filteredAttendance.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-800 bg-[#13223D]/40 py-16 text-center text-slate-400">
+          <Clock className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+          No attendance records found.
+        </div>
+      ) : (
+        <>
           <div className="space-y-3 md:hidden">
-            {attendance.map((record) => {
+            {paginatedAttendance.map((record) => {
               const profile = profilesById.get(record.profile_id);
-              const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Employee";
-              const employeeCode = profile?.employee_code || "";
-              const sessionHours = getSessionHours(record);
-
+              const employeeName = getEmployeeName(record);
               return (
-                <div key={record.id} className="rounded-xl border border-slate-800 bg-[#0B1528]/70 p-4 text-sm">
-                  <div className="flex min-w-0 items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="break-words font-semibold text-white">{employeeName}</p>
-                      {employeeCode && <p className="mt-0.5 break-all font-mono text-[11px] text-slate-500">{employeeCode}</p>}
+                <div key={record.id} className="rounded-xl border border-slate-800 bg-[#13223D]/60 p-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar><AvatarFallback className="bg-blue-500/10 text-blue-300">{initialsFor(employeeName)}</AvatarFallback></Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-slate-100">{employeeName}</div>
+                      <div className="text-xs text-slate-500">{profile?.employee_code || "No code"}</div>
                     </div>
-                    <div className="shrink-0">{getStatusBadge(record.status)}</div>
+                    {getStatusBadge(record.status)}
                   </div>
-                  <div className="mt-3 grid gap-2 text-slate-300">
-                    <div className="flex justify-between gap-3"><span className="text-slate-500">Date</span><span className="text-right">{formatDate(record.attendance_date)}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-slate-500">Site</span><span className="break-words text-right">{record.site_name_snapshot || "-"}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-slate-500">Check In</span><span className="text-right font-mono">{formatISTTime(record.check_in)}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-slate-500">Check Out</span><span className="text-right font-mono">{formatISTTime(record.check_out)}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-slate-500">Hours</span><span className="font-mono">{sessionHours !== null ? formatDurationHours(sessionHours) : "-"}</span></div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-slate-500">Verification</span>
-                      <span className={record.face_verified ? "text-emerald-400" : "text-slate-500"}>
-                        {record.face_verified ? `Face ${record.face_match_score !== null && record.face_match_score !== undefined ? Math.round(record.face_match_score * 100) + "%" : "Verified"}` : "Face Pending"}
-                      </span>
-                    </div>
-                    {record.check_in_latitude !== null && record.check_in_longitude !== null && (
-                      <div className="flex justify-between gap-3">
-                        <span className="text-slate-500">GPS</span>
-                        <span className="break-all text-right font-mono text-xs text-slate-500">{record.check_in_latitude.toFixed(4)}, {record.check_in_longitude.toFixed(4)}</span>
-                      </div>
-                    )}
+                  <div className="mt-4 grid gap-2 text-sm text-slate-300">
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Site</span><span className="text-right">{record.site_name_snapshot || "-"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Working Hours</span><span className="font-mono">{formatDurationHours(getSessionHours(record))}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Check-in</span><span className="font-mono">{formatISTTime(record.check_in)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Check-out</span><span className="font-mono">{formatISTTime(record.check_out)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">GPS Distance</span><span>{getGpsDistance(record)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Device Used</span><span>Browser</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-500">Verification</span><span>{record.face_verified ? "Verified" : "Pending"}</span></div>
                   </div>
-                  {isAdmin && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => deleteAttendance(record.id)}
-                      disabled={deletingId === record.id}
-                      className="mt-3 min-h-11 w-full border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-white"
-                    >
-                      {deletingId === record.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                      Delete
-                    </Button>
-                  )}
                 </div>
               );
             })}
           </div>
 
-          <div className="hidden rounded-xl border border-slate-800/80 md:block">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-800 bg-[#0B1528]/80 text-xs font-semibold uppercase tracking-wider">
-                  <th className="py-4 px-4 font-medium">Employee</th>
-                  <th className="py-4 px-4 font-medium">Date</th>
-                  <th className="py-4 px-4 font-medium">Site</th>
-                  <th className="py-4 px-4 font-medium">Check In</th>
-                  <th className="py-4 px-4 font-medium">Check Out</th>
-                  <th className="py-4 px-4 font-medium">Hours</th>
-                  <th className="py-4 px-4 font-medium">Status</th>
-                  <th className="py-4 px-4 font-medium text-center">Verification</th>
-                  {isAdmin && <th className="py-4 px-4 font-medium text-right">Delete</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {attendance.map((record) => {
-                  const profile = profilesById.get(record.profile_id);
-                  const employeeName = profile?.full_name || profile?.display_name || profile?.email || "Unknown Employee";
-                  const employeeCode = profile?.employee_code || "";
-                  const sessionHours = getSessionHours(record);
-
-                  return (
-                    <tr key={record.id} className="hover:bg-[#13223D]/40 transition-all duration-150 text-sm">
-                      <td className="py-4 px-4 font-medium text-white">
-                        <div className="flex flex-col">
-                          <span className="font-semibold">{employeeName}</span>
-                          {employeeCode && <span className="text-[11px] text-slate-500 font-mono mt-0.5">{employeeCode}</span>}
-                        </div>
-                      </td>
-                      <td className="py-4 px-4 text-slate-300 font-medium">{formatDate(record.attendance_date)}</td>
-                      <td className="py-4 px-4 text-slate-300 font-medium">{record.site_name_snapshot || "-"}</td>
-                      <td className="py-4 px-4 text-slate-300 font-mono">{formatISTTime(record.check_in)}</td>
-                      <td className="py-4 px-4 text-slate-300 font-mono">{formatISTTime(record.check_out)}</td>
-                      <td className="py-4 px-4 text-slate-300 font-mono">
-                        {sessionHours !== null ? formatDurationHours(sessionHours) : "-"}
-                      </td>
-                      <td className="py-4 px-4">{getStatusBadge(record.status)}</td>
-                      <td className="py-4 px-4">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border ${
-                            record.face_verified
-                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                              : "bg-slate-800/60 border-slate-700/50 text-slate-500"
-                          }`}>
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            {record.face_verified ? `Face ${record.face_match_score !== null && record.face_match_score !== undefined ? Math.round(record.face_match_score * 100) + "%" : "Verified"}` : "Face Pending"}
-                          </span>
-                          {record.check_in_latitude !== null && record.check_in_longitude !== null && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-500">
-                              <MapPin className="w-3 h-3 text-blue-500" />
-                              {record.check_in_latitude.toFixed(4)}, {record.check_in_longitude.toFixed(4)}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      {isAdmin && (
-                        <td className="py-4 px-4 text-right">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteAttendance(record.id)}
-                            disabled={deletingId === record.id}
-                            className="text-red-400 hover:text-white hover:bg-red-500/20"
-                            title="Delete attendance record"
-                          >
-                            {deletingId === record.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                          </Button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="hidden overflow-hidden rounded-xl border border-slate-800 md:block">
+            <div className="max-h-[68vh] overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-[#13223D] shadow-sm">
+                  <TableRow className="border-slate-800 hover:bg-[#13223D]">
+                    <TableHead className="min-w-[240px] text-slate-300">Employee</TableHead>
+                    <TableHead className="min-w-[130px] text-slate-300">Site</TableHead>
+                    <TableHead className="text-slate-300">Working Hours</TableHead>
+                    <TableHead className="text-slate-300">Check-in</TableHead>
+                    <TableHead className="text-slate-300">Check-out</TableHead>
+                    <TableHead className="text-slate-300">GPS Distance</TableHead>
+                    <TableHead className="text-slate-300">Device Used</TableHead>
+                    <TableHead className="text-slate-300">Attendance Status</TableHead>
+                    <TableHead className="min-w-[150px] text-slate-300">Verification Status</TableHead>
+                    {isAdmin && <TableHead className="text-right text-slate-300">Action</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedAttendance.map((record) => {
+                    const profile = profilesById.get(record.profile_id);
+                    const employeeName = getEmployeeName(record);
+                    return (
+                      <TableRow key={record.id} className="border-slate-800/70 hover:bg-[#13223D]/60">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar><AvatarFallback className="bg-blue-500/10 text-blue-300">{initialsFor(employeeName)}</AvatarFallback></Avatar>
+                            <div>
+                              <div className="font-semibold text-slate-100">{employeeName}</div>
+                              <div className="text-xs text-slate-500">{profile?.employee_code || "No code"} · {formatDate(record.attendance_date)}</div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-slate-300"><MapPin className="mr-1 inline h-3.5 w-3.5 text-blue-400" />{record.site_name_snapshot || "-"}</TableCell>
+                        <TableCell className="font-mono text-slate-100">{formatDurationHours(getSessionHours(record))}</TableCell>
+                        <TableCell className="font-mono text-slate-300">{formatISTTime(record.check_in)}</TableCell>
+                        <TableCell className="font-mono text-slate-300">{formatISTTime(record.check_out)}</TableCell>
+                        <TableCell className="font-mono text-slate-300">{getGpsDistance(record)}</TableCell>
+                        <TableCell className="text-slate-300">Browser</TableCell>
+                        <TableCell>{getStatusBadge(record.status)}</TableCell>
+                        <TableCell>{renderVerification(record)}</TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right">
+                            <Button type="button" variant="ghost" size="icon" onClick={() => deleteAttendance(record.id)} disabled={deletingId === record.id} className="text-red-400 hover:bg-red-500/20 hover:text-white">
+                              {deletingId === record.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
-          </>
-        )}
-      </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-[#13223D]/40 p-3 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+            <span>Page {currentPage} of {pageCount} · {filteredAttendance.length} records</span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={currentPage === pageCount} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

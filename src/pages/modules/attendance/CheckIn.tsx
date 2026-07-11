@@ -23,11 +23,12 @@ import {
 } from "lucide-react";
 import Webcam from "react-webcam";
 import {
-  averageFaceDescriptors,
   FACE_MATCH_THRESHOLD,
   getFaceErrorMessage,
-  getFaceFrameDescriptorFromVideo,
-  isValidFaceDescriptor,
+  getFaceFrameDescriptorWithRetry,
+  hasValidFaceDescriptors,
+  loadFaceModels,
+  normalizeFaceDescriptors,
   REGISTRATION_STEPS,
   verifyFaceAcrossFrames,
   type FaceDescriptor,
@@ -46,7 +47,8 @@ type ProfileLite = {
 type EmployeeFaceProfile = {
   id: string;
   profile_id: string;
-  face_descriptor: FaceDescriptor;
+  face_descriptor: FaceDescriptor | null;
+  face_descriptors: FaceDescriptor[] | null;
   face_image_path: string | null;
   registered_at: string | null;
   updated_at: string | null;
@@ -74,6 +76,12 @@ type AttendanceSession = {
 const DEMO_MODE = false;
 
 const DEFAULT_MINIMUM_FULL_DAY_HOURS = 8;
+const FACE_CAMERA_CONSTRAINTS = {
+  width: { ideal: 640 },
+  height: { ideal: 480 },
+  frameRate: { ideal: 24 },
+  facingMode: "user",
+};
 
 type AttendanceSite = {
   id: string;
@@ -134,7 +142,8 @@ export default function CheckIn() {
     currentProfile?.email ||
     user?.email ||
     "Your profile";
-  const hasValidFaceProfile = isValidFaceDescriptor(faceProfile?.face_descriptor);
+  const storedFaceDescriptors = normalizeFaceDescriptors(faceProfile);
+  const hasValidFaceProfile = hasValidFaceDescriptors(storedFaceDescriptors);
   const isOpenAttendanceSession = (record: AttendanceSession | null | undefined) => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -197,7 +206,7 @@ export default function CheckIn() {
 
     const { data, error } = await supabase
       .from("employee_face_profiles" as any)
-      .select("id, profile_id, face_descriptor, face_image_path, registered_at, updated_at")
+      .select("id, profile_id, face_descriptor, face_descriptors, face_image_path, registered_at, updated_at")
       .eq("profile_id", currentProfileId)
       .maybeSingle();
 
@@ -215,7 +224,7 @@ export default function CheckIn() {
 
     const { data, error } = await supabase
       .from("employee_face_profiles" as any)
-      .select("id, profile_id, face_descriptor, face_image_path, registered_at, updated_at")
+      .select("id, profile_id, face_descriptor, face_descriptors, face_image_path, registered_at, updated_at")
       .eq("profile_id", currentProfileId)
       .maybeSingle();
 
@@ -256,34 +265,18 @@ export default function CheckIn() {
     try {
       const { data: assignments, error: assignmentError } = await (supabase as any)
         .from("employee_site_assignments")
-        .select("site_id")
+        .select("attendance_sites(id,site_name,latitude,longitude,radius_meters,is_default,is_active)")
         .eq("profile_id", currentProfileId);
 
       if (assignmentError) throw assignmentError;
 
-      const assignedSiteIds = Array.from(new Set(((assignments ?? []) as any[])
-        .map((row) => row.site_id)
-        .filter((siteId): siteId is string => Boolean(siteId))));
+      const assignedSites = ((assignments ?? []) as any[])
+        .map((row) => row.attendance_sites)
+        .filter((site): site is AttendanceSite => Boolean(site?.id && site.is_active));
 
-      if (assignedSiteIds.length > 0) {
-        const { data: assignedSitesRaw, error: assignedSitesError } = await (supabase as any)
-          .from("attendance_sites")
-          .select("id,site_name,latitude,longitude,radius_meters,is_default,is_active")
-          .in("id", assignedSiteIds)
-          .eq("is_active", true);
-
-        if (assignedSitesError) throw assignedSitesError;
-
-        const assignedSites = (assignedSitesRaw ?? []) as AttendanceSite[];
+      if (assignedSites.length > 0) {
         if (import.meta.env.DEV) console.log("assignedSites", assignedSites);
-
-        if (assignedSites.length > 0) {
-          setAllowedSites(assignedSites);
-          return;
-        }
-
-        setAllowedSites([]);
-        toast.error("No active assigned attendance site is available. Contact an admin.");
+        setAllowedSites(assignedSites);
         return;
       }
 
@@ -318,6 +311,13 @@ export default function CheckIn() {
     fetchAllowedSites();
     fetchTodayAttendance();
   }, [currentProfileId]);
+
+  useEffect(() => {
+    if (!showFaceCamera && !showFaceRegistration) return;
+    loadFaceModels().catch(() => {
+      setCameraPermissionError("Camera Initializing...");
+    });
+  }, [showFaceCamera, showFaceRegistration]);
 
   useEffect(() => {
     const lockedSiteId = activeSession?.site_id ?? "";
@@ -652,7 +652,7 @@ export default function CheckIn() {
     }
 
     const latestFaceProfile = await fetchLatestFaceProfile();
-    if (!isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+    if (!hasValidFaceDescriptors(normalizeFaceDescriptors(latestFaceProfile))) {
       toast.error("Please register face before attendance");
       return;
     }
@@ -753,7 +753,8 @@ export default function CheckIn() {
       return;
     }
 
-    if (!faceProfile || !isValidFaceDescriptor(faceProfile.face_descriptor)) {
+    const storedDescriptors = normalizeFaceDescriptors(faceProfile);
+    if (!hasValidFaceDescriptors(storedDescriptors)) {
       toast.error("Registration Required", {
         description: "Please register your face before marking attendance."
       });
@@ -769,7 +770,7 @@ export default function CheckIn() {
 
     setIsVerifyingFace(true);
     try {
-      const match = await verifyFaceAcrossFrames(video, faceProfile.face_descriptor);
+      const match = await verifyFaceAcrossFrames(video, storedDescriptors);
       const threshold = FACE_MATCH_THRESHOLD;
       const faceDistance = match.distance;
       const faceScore = match.score;
@@ -786,14 +787,18 @@ export default function CheckIn() {
           matched: faceVerified,
           detectionScore: match.detectionScore,
           faceMatchPercentage,
-          processingTime: match.processingTime
+          processingTime: match.processingTime,
+          descriptorMatched: match.bestDescriptorIndex,
+          frameMatched: match.bestFrame,
         });
 
         console.log("FINAL ATTENDANCE CHECK", {
           gpsVerified,
           distanceMeters,
-          faceDistance,
-          faceScore,
+          distance: faceDistance,
+          score: faceScore,
+          descriptorMatched: match.bestDescriptorIndex,
+          frameMatched: match.bestFrame,
           faceMatchPercentage,
           faceVerified,
           framesChecked: match.framesChecked,
@@ -856,13 +861,11 @@ export default function CheckIn() {
       toast.error(message, {
         description: message === "Only One Face Allowed"
           ? "Only one person should be visible."
-          : message === "Improve Lighting"
-            ? "Improve lighting, move closer, and look directly at the camera."
-            : message === "Move Closer To Camera"
-              ? "Move closer and keep your face centered."
-              : message === "No Face Detected"
-                ? "Please position your face inside the camera frame."
-                : undefined,
+          : message === "Move Closer"
+            ? "Move closer and keep your face visible in the camera."
+            : message === "No Face Detected"
+              ? "Please position your face inside the camera frame."
+              : undefined,
       });
     } finally {
       setIsVerifyingFace(false);
@@ -882,7 +885,7 @@ export default function CheckIn() {
 
   const openFaceRegistration = async () => {
     const latestFaceProfile = await fetchLatestFaceProfile();
-    if (isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+    if (hasValidFaceDescriptors(normalizeFaceDescriptors(latestFaceProfile))) {
       toast.success("Face Registered", {
         description: "Verified. Admin reset is required before re-registration.",
       });
@@ -906,57 +909,66 @@ export default function CheckIn() {
   const captureFaceSample = async () => {
     const video = webcamRef.current?.video;
     if (!currentProfileId || !video) {
-      toast.error("Camera Not Ready");
+      toast.error("Camera Initializing...");
       return;
     }
 
     setIsRegisteringFace(true);
     try {
-      const latestFaceProfile = await fetchLatestFaceProfile();
-      if (isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
-        toast.error("Face already registered", {
-          description: "Admin reset is required before re-registration.",
-        });
-        resetFaceRegistrationCamera();
-        return;
-      }
-
-      const frame = await getFaceFrameDescriptorFromVideo(video);
+      const frame = await getFaceFrameDescriptorWithRetry(video);
       const newDescriptors = [...capturedDescriptors, frame.descriptor];
+      const currentStep = registrationStep + 1;
       setCapturedDescriptors(newDescriptors);
+
+      if (import.meta.env.DEV) {
+        console.log("CAPTURED DESCRIPTOR", {
+          step: currentStep,
+          descriptorCount: newDescriptors.length,
+        });
+      }
 
       if (registrationStep < REGISTRATION_STEPS.length - 1) {
         setRegistrationStep(registrationStep + 1);
-        toast.success(`Captured ${REGISTRATION_STEPS[registrationStep].label}`);
+        toast.success("Captured");
       } else {
         setRegistrationStep(REGISTRATION_STEPS.length);
-        toast.success("All face samples captured");
+        toast.success("Captured. Saving...");
+        await registerFaceProfile(newDescriptors, currentStep);
       }
     } catch (error: any) {
       const message = getFaceErrorMessage(error);
       toast.error(message, {
         description: message === "Only One Face Allowed"
           ? "Only one person should be visible during registration."
-          : message === "Improve Lighting"
-            ? "Improve lighting, move closer, and look directly at the camera."
-            : message === "Move Closer To Camera"
-              ? "Move closer and keep your face centered."
-              : message === "No Face Detected"
-                ? "Please position your face inside the camera frame."
-                : undefined,
+          : message === "Move Closer"
+            ? "Move closer and keep your face visible in the camera."
+            : message === "No Face Detected"
+              ? "Please position your face inside the camera frame."
+              : undefined,
       });
     } finally {
       setIsRegisteringFace(false);
     }
   };
 
-  const registerFaceProfile = async () => {
+  const registerFaceProfile = async (descriptorsToSave: FaceDescriptor[], saveStep = registrationStep) => {
     if (!currentProfileId) {
-      toast.error("Camera Not Ready");
+      toast.error("Camera Initializing...");
       return;
     }
 
-    if (capturedDescriptors.length !== REGISTRATION_STEPS.length || !capturedDescriptors.every(isValidFaceDescriptor)) {
+    const registrationComplete = descriptorsToSave.length === REGISTRATION_STEPS.length;
+    if (import.meta.env.DEV) {
+      console.log("SAVE FACE PROFILE", {
+        descriptorCount: descriptorsToSave?.length,
+        descriptors: descriptorsToSave,
+        registrationComplete,
+        currentStep: saveStep,
+        capturedSteps: descriptorsToSave.length,
+      });
+    }
+
+    if (!hasValidFaceDescriptors(descriptorsToSave) || descriptorsToSave.length !== REGISTRATION_STEPS.length) {
       toast.error("Please capture all 5 face samples first.");
       return;
     }
@@ -964,7 +976,7 @@ export default function CheckIn() {
     setIsRegisteringFace(true);
     try {
       const latestFaceProfile = await fetchLatestFaceProfile();
-      if (isValidFaceDescriptor(latestFaceProfile?.face_descriptor)) {
+      if (hasValidFaceDescriptors(normalizeFaceDescriptors(latestFaceProfile))) {
         toast.error("Face already registered", {
           description: "Admin reset is required before re-registration.",
         });
@@ -972,12 +984,12 @@ export default function CheckIn() {
         return;
       }
 
-      const averageDescriptor = averageFaceDescriptors(capturedDescriptors);
       const { error } = await (supabase as any)
         .from("employee_face_profiles")
         .insert({
           profile_id: currentProfileId,
-          face_descriptor: averageDescriptor,
+          face_descriptor: null,
+          face_descriptors: descriptorsToSave,
           face_image_path: null,
         });
 
@@ -985,15 +997,13 @@ export default function CheckIn() {
 
       if (import.meta.env.DEV) {
         console.log("FACE REGISTRATION", {
-          samplesCaptured: capturedDescriptors.length,
-          descriptorLength: averageDescriptor.length,
-          averagedDescriptorCreated: true
+          samplesCaptured: descriptorsToSave.length,
+          descriptorLength: descriptorsToSave[0]?.length ?? 0,
+          descriptorsStored: descriptorsToSave.length,
         });
       }
 
-      toast.success("Face Registered", {
-        description: "Verified. You can now mark attendance.",
-      });
+      toast.success("Registration Complete");
       resetFaceRegistrationCamera();
       await fetchFaceProfile();
     } catch (error: any) {
@@ -1587,7 +1597,7 @@ const formatISTTime = (time: string | null) => {
                 ) : (
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center text-sm shadow-md">
                     <span className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">All Poses Captured</span>
-                    <p className="mt-1 text-slate-200 font-semibold">Ready to save the averaged face profile.</p>
+                    <p className="mt-1 text-slate-200 font-semibold">Registration Complete</p>
                   </div>
                 )}
                 <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
@@ -1595,6 +1605,7 @@ const formatISTTime = (time: string | null) => {
                     ref={webcamRef}
                     audio={false}
                     mirrored
+                    videoConstraints={FACE_CAMERA_CONSTRAINTS}
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
@@ -1616,14 +1627,10 @@ const formatISTTime = (time: string | null) => {
                       Capture
                     </Button>
                   ) : (
-                    <Button
-                      onClick={registerFaceProfile}
-                      className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                      disabled={isRegisteringFace}
-                    >
-                      {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
-                      Save Face Profile
-                    </Button>
+                    <div className="flex min-h-11 w-full items-center justify-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-4 text-sm font-bold text-emerald-300">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving Face Profile
+                    </div>
                   )}
                   {capturedDescriptors.length > 0 && (
                     <Button
@@ -1683,6 +1690,7 @@ const formatISTTime = (time: string | null) => {
                     ref={webcamRef}
                     audio={false}
                     mirrored
+                    videoConstraints={FACE_CAMERA_CONSTRAINTS}
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {

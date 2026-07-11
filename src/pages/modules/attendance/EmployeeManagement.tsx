@@ -34,10 +34,9 @@ import {
 } from "lucide-react";
 import Webcam from "react-webcam";
 import {
-  averageFaceDescriptors,
   getFaceErrorMessage,
-  getFaceFrameDescriptorFromVideo,
-  isValidFaceDescriptor,
+  getFaceFrameDescriptorWithRetry,
+  hasValidFaceDescriptors,
   REGISTRATION_STEPS,
   type FaceDescriptor,
 } from "@/lib/faceRecognition";
@@ -66,6 +65,13 @@ type AttendanceSite = {
   site_name: string;
   is_active: boolean;
   is_default: boolean;
+};
+
+const FACE_CAMERA_CONSTRAINTS = {
+  width: { ideal: 640 },
+  height: { ideal: 480 },
+  frameRate: { ideal: 24 },
+  facingMode: "user",
 };
 
 type AssignedSite = {
@@ -332,61 +338,78 @@ export default function EmployeeManagement() {
   const captureFaceSample = async () => {
     const video = webcamRef.current?.video;
     if (!selectedProfileId || !video) {
-      toast.error("Camera Not Ready");
+      toast.error("Camera Initializing...");
       return;
     }
 
     setIsRegisteringFace(true);
     try {
-      const frame = await getFaceFrameDescriptorFromVideo(video);
+      const frame = await getFaceFrameDescriptorWithRetry(video);
       const newDescriptors = [...capturedDescriptors, frame.descriptor];
+      const currentStep = registrationStep + 1;
       setCapturedDescriptors(newDescriptors);
+
+      if (import.meta.env.DEV) {
+        console.log("CAPTURED DESCRIPTOR", {
+          step: currentStep,
+          descriptorCount: newDescriptors.length,
+        });
+      }
 
       if (registrationStep < REGISTRATION_STEPS.length - 1) {
         setRegistrationStep(registrationStep + 1);
-        toast.success(`Captured ${REGISTRATION_STEPS[registrationStep].label}. Continue to the next pose.`);
+        toast.success("Captured");
       } else {
         setRegistrationStep(REGISTRATION_STEPS.length);
-        toast.success("All face samples captured. Save the face profile to finish.");
+        toast.success("Captured. Saving...");
+        await registerFaceDescriptor(newDescriptors, currentStep);
       }
     } catch (err: any) {
       const message = getFaceErrorMessage(err);
       toast.error(message, {
         description: message === "Only One Face Allowed"
           ? "Only one person should be visible during registration."
-          : message === "Improve Lighting"
-            ? "Improve lighting, move closer, and look directly at the camera."
-            : message === "Move Closer To Camera"
-              ? "Move closer and keep your face centered."
-              : message === "No Face Detected"
-                ? "Please position your face inside the camera frame."
-                : undefined,
+          : message === "Move Closer"
+            ? "Move closer and keep your face visible in the camera."
+            : message === "No Face Detected"
+              ? "Please position your face inside the camera frame."
+              : undefined,
       });
     } finally {
       setIsRegisteringFace(false);
     }
   };
 
-  const registerFaceDescriptor = async () => {
-    if (!selectedProfileId || capturedDescriptors.length !== REGISTRATION_STEPS.length) {
+  const registerFaceDescriptor = async (descriptorsToSave: FaceDescriptor[], saveStep = registrationStep) => {
+    const registrationComplete = descriptorsToSave.length === REGISTRATION_STEPS.length;
+    if (import.meta.env.DEV) {
+      console.log("SAVE FACE PROFILE", {
+        descriptorCount: descriptorsToSave?.length,
+        descriptors: descriptorsToSave,
+        registrationComplete,
+        currentStep: saveStep,
+        capturedSteps: descriptorsToSave.length,
+      });
+    }
+
+    if (!selectedProfileId || descriptorsToSave.length !== REGISTRATION_STEPS.length) {
       toast.error("Please capture all 5 face samples first.");
       return;
     }
 
-    if (!capturedDescriptors.every(isValidFaceDescriptor)) {
+    if (!hasValidFaceDescriptors(descriptorsToSave)) {
       toast.error("Face capture failed. Reset and capture all 5 samples again.");
       return;
     }
 
     setIsRegisteringFace(true);
     try {
-      const averageDescriptor = averageFaceDescriptors(capturedDescriptors);
-
       const { error } = await (supabase as any)
         .from("employee_face_profiles")
         .upsert({
           profile_id: selectedProfileId,
-          face_descriptor: averageDescriptor,
+          face_descriptor: null,
+          face_descriptors: descriptorsToSave,
           face_image_path: null,
           updated_at: new Date().toISOString(),
         }, { onConflict: "profile_id" });
@@ -395,13 +418,13 @@ export default function EmployeeManagement() {
 
       if (import.meta.env.DEV) {
         console.log("FACE REGISTRATION", {
-          samplesCaptured: capturedDescriptors.length,
-          descriptorLength: averageDescriptor.length,
-          averagedDescriptorCreated: true
+          samplesCaptured: descriptorsToSave.length,
+          descriptorLength: descriptorsToSave[0]?.length ?? 0,
+          descriptorsStored: descriptorsToSave.length,
         });
       }
 
-      toast.success("Face profile registered");
+      toast.success("Registration Complete");
       setShowFaceRegistration(false);
       setSelectedProfileId(null);
       await fetchProfiles();
@@ -883,7 +906,7 @@ export default function EmployeeManagement() {
                 ) : (
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center text-sm shadow-md">
                     <span className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">All Poses Captured</span>
-                    <p className="mt-1 text-slate-200 font-semibold">Ready to save the face profile.</p>
+                    <p className="mt-1 text-slate-200 font-semibold">Registration Complete</p>
                   </div>
                 )}
 
@@ -892,6 +915,7 @@ export default function EmployeeManagement() {
                     ref={webcamRef}
                     audio={false}
                     mirrored
+                    videoConstraints={FACE_CAMERA_CONSTRAINTS}
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
@@ -909,10 +933,10 @@ export default function EmployeeManagement() {
                       Capture
                     </Button>
                   ) : (
-                    <Button onClick={registerFaceDescriptor} className="min-h-11 w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold" disabled={isRegisteringFace}>
-                      {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
-                      Save Face Profile
-                    </Button>
+                    <div className="flex min-h-11 w-full items-center justify-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-4 text-sm font-bold text-emerald-300">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving Face Profile
+                    </div>
                   )}
                   {capturedDescriptors.length > 0 && (
                     <Button onClick={resetFaceCapture} variant="outline" className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
