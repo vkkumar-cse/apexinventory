@@ -17,6 +17,7 @@ interface AuthCtx {
   isApproved: boolean;
   isActive: boolean;
   moduleAccess: string[];
+  mustChangePassword: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [moduleAccess, setModuleAccess] = useState<string[]>([]);
   const [isActive, setIsActive] = useState<boolean>(true);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   async function loadProfile(uid: string) {
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDisplayName((prof as any)?.full_name ?? (prof as any)?.display_name ?? null);
       setIsActive((prof as any)?.is_active ?? true);
       setModuleAccess(normalizeModuleAccess((prof as any)?.module_access));
+      setMustChangePassword(!!(prof as any)?.must_change_password);
     } catch (e) {
       console.error("Error loading auth profile:", e);
     } finally {
@@ -59,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       if (s?.user) setTimeout(() => loadProfile(s.user.id), 0);
-      else { setRole(null); setStatus(null); setDisplayName(null); setModuleAccess([]); setLoading(false); }
+      else { setRole(null); setStatus(null); setDisplayName(null); setModuleAccess([]); setMustChangePassword(false); setLoading(false); }
     });
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
@@ -76,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isApproved: status === "approved",
       isActive,
       moduleAccess,
+      mustChangePassword,
       refresh: async () => { if (session?.user) await loadProfile(session.user.id); },
       signOut: async () => { await supabase.auth.signOut(); },
     }}>{children}</Ctx.Provider>

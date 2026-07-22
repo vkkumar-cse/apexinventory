@@ -7,13 +7,15 @@ import { Button } from "@/components/ui/button";
 export function ProtectedRoute({ 
   children, 
   adminOnly = false,
-  requiredModule = null 
+  requiredModule = null,
+  allowMustChangePassword = false
 }: { 
   children: React.ReactNode; 
   adminOnly?: boolean; 
   requiredModule?: string | null;
+  allowMustChangePassword?: boolean;
 }) {
-  const { session, loading, isAdmin, status, signOut, role, moduleAccess, isActive } = useAuth();
+  const { session, loading, isAdmin, status, signOut, role, moduleAccess, isActive, mustChangePassword } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -25,6 +27,10 @@ export function ProtectedRoute({
   }
   if (!session) {
     return <Navigate to="/auth" state={{ from: location.pathname }} replace />;
+  }
+
+  if (mustChangePassword && !allowMustChangePassword) {
+    return <Navigate to="/change-password" replace />;
   }
 
   if (status !== "approved") {

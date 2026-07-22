@@ -1,13 +1,23 @@
 import { Link, NavLink } from "react-router-dom";
+import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LayoutDashboard, Users as UsersIcon, LogOut, ChevronLeft, CalendarClock, History, FileText, Umbrella, Calendar, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apexLogo from "@/assets/apex-logo.jpeg";
+import { loadFaceModels } from "@/lib/faceRecognition";
 
 export function AttendanceLayout({ children }: { children: React.ReactNode }) {
   const { user, role, signOut, displayName, isAdmin } = useAuth();
+
+  useEffect(() => {
+    loadFaceModels().catch((err) => {
+      if (import.meta.env.DEV) {
+        console.error("Failed to preload face recognition models:", err);
+      }
+    });
+  }, []);
 
   const nav = [
     { to: "/attendance/dashboard", label: "Dashboard", icon: LayoutDashboard, show: true },

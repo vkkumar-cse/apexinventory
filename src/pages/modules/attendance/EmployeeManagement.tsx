@@ -31,14 +31,22 @@ import {
   User as UserSoloIcon,
   Users as UsersIcon,
   X,
+  CheckCircle2,
 } from "lucide-react";
 import Webcam from "react-webcam";
+import * as faceapi from "face-api.js";
 import {
   getFaceErrorMessage,
   getFaceFrameDescriptorWithRetry,
   hasValidFaceDescriptors,
   REGISTRATION_STEPS,
   type FaceDescriptor,
+  getAverageDetectionTime,
+  getFaceFrameDescriptorFromVideo,
+  FaceCaptureError,
+  validateFacePoseForStep,
+  checkLivenessAndStability,
+  type FaceFrameDescriptor,
 } from "@/lib/faceRecognition";
 
 type ProfileStatus = "pending" | "approved" | "rejected";
@@ -123,6 +131,105 @@ export default function EmployeeManagement() {
   const [registrationStep, setRegistrationStep] = useState(0);
   const [capturedDescriptors, setCapturedDescriptors] = useState<FaceDescriptor[]>([]);
   const [faceResetProfile, setFaceResetProfile] = useState<EmployeeProfile | null>(null);
+
+  // Face registration additional states
+  const [isRegistrationSuccess, setIsRegistrationSuccess] = useState(false);
+  const [poseTimer, setPoseTimer] = useState(0);
+  const [showBypassButton, setShowBypassButton] = useState(false);
+  const [isPoseBypassed, setIsPoseBypassed] = useState(false);
+
+  // Camera Warm up states
+  const [cameraWarm, setCameraWarm] = useState(false);
+  const [cameraWarmMsg, setCameraWarmMsg] = useState("Camera warming up...");
+
+  // Performance-based camera resolution state
+  const [videoConstraints, setVideoConstraints] = useState({
+    width: { ideal: 640 },
+    height: { ideal: 480 },
+    frameRate: { ideal: 20 },
+    facingMode: "user"
+  });
+
+  // Guided registration pose bypass timer effect
+  useEffect(() => {
+    let interval: any;
+    if (showFaceRegistration && registrationStep < REGISTRATION_STEPS.length) {
+      setPoseTimer(0);
+      setShowBypassButton(false);
+      setIsPoseBypassed(false);
+      interval = setInterval(() => {
+        setPoseTimer((prev) => {
+          if (prev >= 5) {
+            setShowBypassButton(true);
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showFaceRegistration, registrationStep]);
+
+  // Webcam warm-up tracker
+  useEffect(() => {
+    let interval: any;
+    let timeout: any;
+    
+    if (showFaceRegistration) {
+      setCameraWarm(false);
+      setCameraWarmMsg("Camera warming up...");
+      
+      interval = setInterval(() => {
+        const video = webcamRef.current?.video;
+        if (video && video.readyState === 4 && video.videoWidth > 0) {
+          clearInterval(interval);
+          setCameraWarmMsg("Readying in 2s...");
+          timeout = setTimeout(() => {
+            setCameraWarm(true);
+            setCameraWarmMsg("Camera Ready");
+          }, 2000);
+        }
+      }, 200);
+    } else {
+      setCameraWarm(false);
+      setCameraWarmMsg("Camera Not Ready");
+    }
+    
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [showFaceRegistration]);
+
+  // Performance adaptive resolution scaling
+  useEffect(() => {
+    const checkAndScaleResolution = () => {
+      const avgTime = getAverageDetectionTime();
+      if (avgTime > 300 && videoConstraints.width.ideal === 640) {
+        if (import.meta.env.DEV) {
+          console.log(`[DYNAMIC RESOLUTION] Detection time (${avgTime.toFixed(1)}ms) exceeds 300ms. Downgrading to 320x240.`);
+        }
+        setVideoConstraints({
+          width: { ideal: 320 },
+          height: { ideal: 240 },
+          frameRate: { ideal: 15 },
+          facingMode: "user"
+        });
+      } else if (avgTime > 450 && videoConstraints.width.ideal === 320) {
+        if (import.meta.env.DEV) {
+          console.log(`[DYNAMIC RESOLUTION] Detection time (${avgTime.toFixed(1)}ms) exceeds 450ms. Downgrading to 240x180.`);
+        }
+        setVideoConstraints({
+          width: { ideal: 240 },
+          height: { ideal: 180 },
+          frameRate: { ideal: 10 },
+          facingMode: "user"
+        });
+      }
+    };
+
+    const interval = setInterval(checkAndScaleResolution, 3000);
+    return () => clearInterval(interval);
+  }, [videoConstraints]);
 
   const fetchProfiles = async () => {
     setLoading(true);
@@ -342,64 +449,138 @@ export default function EmployeeManagement() {
       return;
     }
 
+    if (!cameraWarm) {
+      toast.error("Camera warming up. Please wait.");
+      return;
+    }
+
     setIsRegisteringFace(true);
+    const startRegTime = performance.now();
+
     try {
-      const frame = await getFaceFrameDescriptorWithRetry(video);
-      const newDescriptors = [...capturedDescriptors, frame.descriptor];
+      const capturedFrames: FaceDescriptor[] = [];
+      let landmarksToUse: faceapi.FaceLandmarks68 | null = null;
+      let scoreToUse = 0;
+
+      for (let i = 0; i < 3; i++) {
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+
+        let frame: FaceFrameDescriptor | null = null;
+        let lastError: any = null;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          if (attempt > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 150));
+          }
+          try {
+            frame = await getFaceFrameDescriptorFromVideo(video);
+            break;
+          } catch (e) {
+            lastError = e;
+            if (e instanceof FaceCaptureError && e.code === "MULTIPLE_FACES") {
+              throw e;
+            }
+          }
+        }
+
+        if (!frame) {
+          throw lastError ?? new FaceCaptureError("NO_FACE", "No Face Detected");
+        }
+
+        const poseVal = validateFacePoseForStep(frame.landmarks, registrationStep);
+        if (!poseVal.isValid && !isPoseBypassed) {
+          throw new Error(poseVal.message);
+        }
+
+        capturedFrames.push(frame.descriptor);
+        landmarksToUse = frame.landmarks;
+        scoreToUse = frame.detectionScore;
+      }
+
+      const liveness = checkLivenessAndStability(capturedFrames);
+      if (!liveness.isValid) {
+        throw new Error(liveness.message);
+      }
+
+      const averageDescriptor = new Array(128).fill(0);
+      for (let j = 0; j < 128; j++) {
+        let sum = 0;
+        for (let i = 0; i < 3; i++) {
+          sum += capturedFrames[i][j];
+        }
+        averageDescriptor[j] = sum / 3;
+      }
+
+      const newDescriptors = [...capturedDescriptors, averageDescriptor];
       const currentStep = registrationStep + 1;
       setCapturedDescriptors(newDescriptors);
 
-      if (import.meta.env.DEV) {
-        console.log("CAPTURED DESCRIPTOR", {
-          step: currentStep,
-          descriptorCount: newDescriptors.length,
-        });
-      }
-
       if (registrationStep < REGISTRATION_STEPS.length - 1) {
+        toast.success("✓ Captured Successfully");
+        setIsRegisteringFace(true);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
         setRegistrationStep(registrationStep + 1);
-        toast.success("Captured");
+        setIsPoseBypassed(false);
+        setPoseTimer(0);
+        setShowBypassButton(false);
       } else {
-        setRegistrationStep(REGISTRATION_STEPS.length);
-        toast.success("Captured. Saving...");
-        await registerFaceDescriptor(newDescriptors, currentStep);
+        if (newDescriptors.length !== 5) {
+          throw new Error("Failed to capture all 5 required poses.");
+        }
+        
+        toast.success("✓ Captured Successfully");
+        setIsRegisteringFace(true);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await registerFaceDescriptor(newDescriptors, currentStep, Math.round(performance.now() - startRegTime));
       }
-    } catch (err: any) {
-      const message = getFaceErrorMessage(err);
+    } catch (error: any) {
+      const message = error?.message || "Capture failed";
       toast.error(message, {
-        description: message === "Only One Face Allowed"
-          ? "Only one person should be visible during registration."
-          : message === "Move Closer"
-            ? "Move closer and keep your face visible in the camera."
-            : message === "No Face Detected"
-              ? "Please position your face inside the camera frame."
-              : undefined,
+        description: message.includes("liveness") || message.includes("blink")
+          ? "Please blink or move your head slightly."
+          : message.includes("turn") || message.includes("tilt")
+            ? "Reposition your face and try again."
+            : undefined
       });
     } finally {
       setIsRegisteringFace(false);
     }
   };
 
-  const registerFaceDescriptor = async (descriptorsToSave: FaceDescriptor[], saveStep = registrationStep) => {
-    const registrationComplete = descriptorsToSave.length === REGISTRATION_STEPS.length;
-    if (import.meta.env.DEV) {
-      console.log("SAVE FACE PROFILE", {
-        descriptorCount: descriptorsToSave?.length,
-        descriptors: descriptorsToSave,
-        registrationComplete,
-        currentStep: saveStep,
-        capturedSteps: descriptorsToSave.length,
-      });
-    }
-
-    if (!selectedProfileId || descriptorsToSave.length !== REGISTRATION_STEPS.length) {
-      toast.error("Please capture all 5 face samples first.");
+  const registerFaceDescriptor = async (
+    descriptorsToSave: FaceDescriptor[],
+    saveStep = registrationStep,
+    regTimeMs = 0
+  ) => {
+    if (!selectedProfileId) {
+      toast.error("Camera Initializing...");
       return;
     }
 
-    if (!hasValidFaceDescriptors(descriptorsToSave)) {
-      toast.error("Face capture failed. Reset and capture all 5 samples again.");
+    if (descriptorsToSave.length !== 5) {
+      toast.error("Aborting registration: Must have exactly 5 pose descriptors.");
       return;
+    }
+    for (let i = 0; i < descriptorsToSave.length; i++) {
+      const desc = descriptorsToSave[i];
+      if (!desc || desc.length !== 128 || desc.some((val) => val === null || typeof val !== "number")) {
+        toast.error("Aborting registration: Invalid or corrupt descriptors.");
+        return;
+      }
+    }
+    // Check duplicates
+    for (let i = 0; i < descriptorsToSave.length; i++) {
+      for (let j = i + 1; j < descriptorsToSave.length; j++) {
+        let diff = 0;
+        for (let k = 0; k < 128; k++) {
+          diff += Math.abs(descriptorsToSave[i][k] - descriptorsToSave[j][k]);
+        }
+        if (diff === 0) {
+          toast.error("Aborting registration: Duplicate descriptors detected.");
+          return;
+        }
+      }
     }
 
     setIsRegisteringFace(true);
@@ -418,15 +599,13 @@ export default function EmployeeManagement() {
 
       if (import.meta.env.DEV) {
         console.log("FACE REGISTRATION", {
-          samplesCaptured: descriptorsToSave.length,
-          descriptorLength: descriptorsToSave[0]?.length ?? 0,
-          descriptorsStored: descriptorsToSave.length,
+          employeeId: selectedProfileId,
+          descriptorCount: descriptorsToSave.length,
+          registrationTime: regTimeMs || 1500
         });
       }
 
-      toast.success("Registration Complete");
-      setShowFaceRegistration(false);
-      setSelectedProfileId(null);
+      setIsRegistrationSuccess(true);
       await fetchProfiles();
     } catch (err: any) {
       toast.error("Face registration failed");
@@ -438,6 +617,9 @@ export default function EmployeeManagement() {
   const resetFaceCapture = () => {
     setRegistrationStep(0);
     setCapturedDescriptors([]);
+    setIsPoseBypassed(false);
+    setPoseTimer(0);
+    setShowBypassButton(false);
     toast.success("Face registration reset.");
   };
 
@@ -858,13 +1040,20 @@ export default function EmployeeManagement() {
 
       {showFaceRegistration && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0B1528] p-4 shadow-2xl sm:p-6">
+          <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-[#0B1528] p-4 shadow-2xl sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <Camera className="w-5 h-5 text-blue-400" />
-                Register Face
+                <Camera className="w-5 h-5 text-emerald-400" />
+                Register Face Profile
               </h3>
-              <button onClick={() => setShowFaceRegistration(false)} className="text-slate-400 hover:text-white">
+              <button 
+                onClick={() => {
+                  setIsRegistrationSuccess(false);
+                  setShowFaceRegistration(false);
+                }} 
+                className="text-slate-400 hover:text-white"
+                disabled={isRegisteringFace}
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -874,25 +1063,51 @@ export default function EmployeeManagement() {
                 <p className="font-semibold mb-2">Camera Permission Denied</p>
                 <p className="text-sm">{cameraPermissionError}</p>
               </div>
+            ) : isRegistrationSuccess ? (
+              /* Success Screen */
+              <div className="text-center py-8 space-y-5 animate-in fade-in zoom-in duration-300">
+                <div className="mx-auto w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center border border-emerald-500/30">
+                  <CheckCircle2 className="w-10 h-10 animate-bounce text-emerald-400" />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-2xl font-bold text-white">✓ Face Registered Successfully</h4>
+                  <p className="text-slate-300 text-sm">5 pose descriptors captured</p>
+                  <p className="text-emerald-400 text-xs font-semibold uppercase tracking-wider bg-emerald-500/10 px-3 py-1 rounded-full inline-block">Ready for Attendance</p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setIsRegistrationSuccess(false);
+                    setShowFaceRegistration(false);
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11"
+                >
+                  Close
+                </Button>
+              </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-5 gap-1.5 pb-2 sm:gap-2">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  Capture 5 guided poses. The system will guide you step by step.
+                </div>
+
+                {/* Progress dot indicators (● and ✔) */}
+                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-xs text-slate-300 bg-[#0B1528] p-2.5 rounded-xl border border-slate-800">
                   {REGISTRATION_STEPS.map((step, idx) => {
                     const isCaptured = idx < capturedDescriptors.length;
                     const isCurrent = idx === registrationStep;
                     return (
-                      <div
-                        key={step.label}
-                        className={`flex flex-col items-center rounded-lg border p-1.5 text-center transition-all sm:p-2 ${
-                          isCaptured
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                            : isCurrent
-                              ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                              : "bg-slate-950/40 border-slate-800 text-slate-500"
-                        }`}
-                      >
-                        <span className="text-[10px] font-bold uppercase tracking-wider">{idx + 1}</span>
-                        <span className="mt-0.5 hidden text-[9px] font-medium leading-tight min-[390px]:block">{step.label}</span>
+                      <div key={step.label} className="flex items-center gap-1">
+                        {isCaptured ? (
+                          <span className="text-emerald-400 font-bold">✔</span>
+                        ) : isCurrent ? (
+                          <span className="text-blue-400 animate-ping">●</span>
+                        ) : (
+                          <span className="text-slate-600">○</span>
+                        )}
+                        <span className={`text-[10px] ${isCurrent ? 'text-blue-400 font-bold' : isCaptured ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          {step.label}
+                        </span>
+                        {idx < REGISTRATION_STEPS.length - 1 && <span className="text-slate-700 ml-1">→</span>}
                       </div>
                     );
                   })}
@@ -900,50 +1115,97 @@ export default function EmployeeManagement() {
 
                 {registrationStep < REGISTRATION_STEPS.length ? (
                   <div className="bg-[#162A4E] border border-blue-500/20 rounded-xl p-3.5 text-center text-sm shadow-md">
-                    <span className="text-xs uppercase tracking-wider font-extrabold text-blue-400">Current Pose</span>
-                    <p className="mt-1 text-slate-200 font-semibold">{REGISTRATION_STEPS[registrationStep].instruction}</p>
+                    <span className="text-xs uppercase tracking-wider font-extrabold text-blue-400">
+                      Step {registrationStep + 1}/{REGISTRATION_STEPS.length}
+                    </span>
+                    <p className="mt-1 text-slate-200 font-semibold">{REGISTRATION_STEPS[registrationStep].label}</p>
+                    <p className="mt-1 text-xs text-slate-400">{REGISTRATION_STEPS[registrationStep].instruction}</p>
                   </div>
                 ) : (
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center text-sm shadow-md">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 text-center text-sm shadow-md animate-pulse">
                     <span className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">All Poses Captured</span>
-                    <p className="mt-1 text-slate-200 font-semibold">Registration Complete</p>
+                    <p className="mt-1 text-slate-200 font-semibold">Processing details...</p>
                   </div>
                 )}
 
+                {/* Webcam viewport with warm-up layer */}
                 <div className="relative bg-black rounded-lg overflow-hidden border border-slate-700">
                   <Webcam
                     ref={webcamRef}
                     audio={false}
                     mirrored
-                    videoConstraints={FACE_CAMERA_CONSTRAINTS}
+                    videoConstraints={videoConstraints}
                     screenshotFormat="image/jpeg"
                     className="w-full"
                     onUserMediaError={() => {
                       setCameraPermissionError("Camera Permission Denied");
                     }}
                   />
+                  
+                  {!cameraWarm && (
+                    <div className="absolute inset-0 bg-[#0B1528]/95 flex flex-col items-center justify-center space-y-3 z-10">
+                      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                      <span className="text-xs text-slate-300 font-medium tracking-wider">{cameraWarmMsg}</span>
+                    </div>
+                  )}
                 </div>
-                <p className="text-[11px] text-slate-400 text-center">
-                  Only numeric facial features are stored. Face images are not stored.
+
+                {/* Tolerant Override Bypass Option */}
+                {showBypassButton && registrationStep < REGISTRATION_STEPS.length && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center space-y-2">
+                    <p className="text-xs text-amber-300 leading-normal font-medium">
+                      Face alignment verification is taking longer than expected. You can capture anyway.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setIsPoseBypassed(true);
+                        toast.success("Soft pose check bypassed.");
+                      }}
+                      className="bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs h-9 px-3.5"
+                    >
+                      Bypass Pose Validation
+                    </Button>
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-500 text-center">
+                  Ensure face is centered, fully illuminated, and align with requested pose instructions.
                 </p>
-                <div className="grid gap-3 sm:grid-cols-2">
+
+                <div className="grid gap-3 sm:grid-cols-3">
                   {registrationStep < REGISTRATION_STEPS.length ? (
-                    <Button onClick={captureFaceSample} className="min-h-11 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold" disabled={isRegisteringFace}>
+                    <Button
+                      onClick={captureFaceSample}
+                      className="min-h-11 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                      disabled={isRegisteringFace || !cameraWarm}
+                    >
                       {isRegisteringFace ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Camera className="w-4 h-4 mr-2" />}
-                      Capture
+                      Capture Pose
                     </Button>
                   ) : (
                     <div className="flex min-h-11 w-full items-center justify-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-4 text-sm font-bold text-emerald-300">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving Face Profile
+                      Saving...
                     </div>
                   )}
-                  {capturedDescriptors.length > 0 && (
-                    <Button onClick={resetFaceCapture} variant="outline" className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
-                      Reset
-                    </Button>
-                  )}
-                  <Button onClick={() => setShowFaceRegistration(false)} variant="outline" className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800" disabled={isRegisteringFace}>
+                  <Button
+                    onClick={resetFaceCapture}
+                    variant="outline"
+                    className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"
+                    disabled={isRegisteringFace}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setIsRegistrationSuccess(false);
+                      setShowFaceRegistration(false);
+                    }}
+                    variant="outline"
+                    className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"
+                    disabled={isRegisteringFace}
+                  >
                     Cancel
                   </Button>
                 </div>

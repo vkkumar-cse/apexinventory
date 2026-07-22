@@ -23,6 +23,7 @@ import CustomerRoutes from "./routes/CustomerRoutes";
 import CRMRoutes from "./routes/CRMRoutes";
 import NotFound from "./pages/NotFound";
 import { Navigate } from "react-router-dom";
+import ChangePassword from "./pages/auth/ChangePassword";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,16 @@ const App = () => (
           <Routes>
             {/* Auth Routes - No Layout */}
             <Route path="/auth" element={<Auth />} />
+
+            {/* Change Password Route */}
+            <Route
+              path="/change-password"
+              element={
+                <ProtectedRoute allowMustChangePassword={true}>
+                  <ChangePassword />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Root Redirect */}
             <Route path="/" element={<Navigate to="/modules" replace />} />

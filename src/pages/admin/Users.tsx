@@ -14,10 +14,15 @@ import {
   Loader2, 
   Edit3, 
   CheckSquare,
-  Square
+  Square,
+  Key,
+  Eye,
+  EyeOff,
+  Copy,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { MODULES, WORKER_MODULES, normalizeModuleAccess } from "@/lib/modules";
 
 type Status = "pending" | "approved" | "rejected";
@@ -46,6 +51,14 @@ export default function Users() {
   const [activeEditRow, setActiveEditRow] = useState<Row | null>(null);
   const [editRole, setEditRole] = useState<"admin" | "worker">("worker");
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
+
+  // Reset Password Dialog State
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [activeResetRow, setActiveResetRow] = useState<Row | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     document.title = "Users · Apex Software";
@@ -208,6 +221,96 @@ export default function Users() {
     }
   }
 
+  function generateUnambiguousPassword() {
+    const uppers = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lowers = "abcdefghijkmnopqrstuvwxyz";
+    const digits = "23456789";
+    const specials = "@#$%&*!?+-=";
+    const all = uppers + lowers + digits + specials;
+
+    let result = [
+      uppers[Math.floor(Math.random() * uppers.length)],
+      lowers[Math.floor(Math.random() * lowers.length)],
+      digits[Math.floor(Math.random() * digits.length)],
+      specials[Math.floor(Math.random() * specials.length)],
+    ];
+
+    const targetLen = Math.floor(Math.random() * 5) + 12;
+    while (result.length < targetLen) {
+      result.push(all[Math.floor(Math.random() * all.length)]);
+    }
+
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+
+    return result.join("");
+  }
+
+  function openResetPassword(row: Row) {
+    setActiveResetRow(row);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+    setResetPasswordOpen(true);
+  }
+
+  async function executePasswordReset() {
+    if (!activeResetRow || !newPassword) return;
+    setIsResettingPassword(true);
+    try {
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-password`;
+      console.log("Invoking Edge Function URL:", functionUrl);
+
+      const { data, error } = await supabase.functions.invoke("reset-password", {
+        body: { employeeId: activeResetRow.id, newPassword },
+      });
+
+      if (error) {
+        console.error("Full error object returned by supabase.functions.invoke():", error);
+        
+        let detailedMsg = error.message;
+        
+        // Extract the error response body from context if it is a FunctionsHttpError
+        if ('context' in error && error.context instanceof Response) {
+          try {
+            const clone = error.context.clone();
+            const body = await clone.json();
+            if (body && body.error) {
+              detailedMsg = body.error;
+            }
+          } catch (e) {
+            try {
+              const text = await error.context.text();
+              if (text) detailedMsg = text;
+            } catch (e2) {
+              console.error("Could not parse error response body:", e2);
+            }
+          }
+        }
+        throw new Error(detailedMsg || "Failed to invoke reset-password edge function");
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      toast.success("Password reset successfully.", {
+        description: "The employee must change their password the next time they sign in.",
+      });
+
+      setNewPassword("");
+      setConfirmPassword("");
+      setResetPasswordOpen(false);
+    } catch (err: any) {
+      console.error("Caught password reset execution error:", err);
+      toast.error(err?.message || "Unable to reset password. Please try again.");
+    } finally {
+      setIsResettingPassword(false);
+    }
+  }
+
   if (!isAdmin) return <p className="text-center text-muted-foreground py-12">Admins only.</p>;
 
   const visible = rows.filter(r => tab === "all" || r.status === tab);
@@ -316,6 +419,13 @@ export default function Users() {
                             <Edit3 className="h-3.5 w-3.5 mr-1" /> Edit Access
                           </Button>
                           
+                          {/* Reset password */}
+                          {r.status === "approved" && r.id !== me?.id && (
+                            <Button size="sm" variant="outline" className="border-slate-800 text-slate-300 hover:bg-slate-800 h-7 py-0 px-2 text-xs" onClick={() => openResetPassword(r)}>
+                              <Key className="h-3.5 w-3.5 mr-1 text-slate-400" /> Reset Password
+                            </Button>
+                          )}
+                          
                           {r.status === "rejected" && (
                             <Button size="sm" variant="destructive" className="h-7 py-0 px-2 text-xs" onClick={() => deleteRejectedUser(r)}>
                               Delete
@@ -409,6 +519,180 @@ export default function Users() {
             </Button>
             <Button className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold" onClick={saveAccessDetails}>
               Save Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetPasswordOpen} onOpenChange={(open) => {
+        if (!isResettingPassword) setResetPasswordOpen(open);
+      }}>
+        <DialogContent className="bg-slate-900 border border-slate-800 text-white max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Key className="text-indigo-400 w-5 h-5" />
+              Reset Password
+            </DialogTitle>
+            <DialogDescription className="text-slate-400 text-sm">
+              Enter or generate a new secure password for this user account.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 my-2">
+            <div className="p-3 border border-slate-800 rounded-xl bg-slate-950/40 text-xs">
+              <div className="text-slate-400 font-medium">Employee Details</div>
+              <div className="font-bold text-indigo-400 mt-1">
+                {activeResetRow?.full_name || activeResetRow?.display_name || "Employee"}
+              </div>
+              <div className="text-slate-500 font-mono text-[11px] mt-0.5">
+                {activeResetRow?.email}
+              </div>
+            </div>
+
+            {/* Password input fields */}
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-slate-350 text-xs font-semibold">New Password</Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="bg-slate-800 border-slate-700 text-white placeholder-slate-650 focus:ring-indigo-500 text-sm pr-10 h-10"
+                    disabled={isResettingPassword}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-slate-500 hover:text-slate-300"
+                    disabled={isResettingPassword}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-slate-350 text-xs font-semibold">Confirm Password</Label>
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="bg-slate-800 border-slate-700 text-white placeholder-slate-650 focus:ring-indigo-500 text-sm h-10"
+                  disabled={isResettingPassword}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const pass = generateUnambiguousPassword();
+                    setNewPassword(pass);
+                    setConfirmPassword(pass);
+                  }}
+                  className="border-slate-800 bg-[#0B1528] text-slate-300 hover:bg-slate-800 text-xs font-semibold"
+                  disabled={isResettingPassword}
+                >
+                  Generate Strong Password
+                </Button>
+                {newPassword && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(newPassword);
+                      toast.success("Password copied to clipboard.");
+                    }}
+                    className="text-indigo-400 hover:text-indigo-300 text-xs font-semibold flex items-center gap-1.5"
+                    disabled={isResettingPassword}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy Password
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Validation checklist status */}
+            <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3.5 space-y-2 text-xs text-slate-400">
+              <span className="font-bold text-[10px] uppercase text-slate-500 block mb-1">Complexity Requirements</span>
+              <div className="flex items-center gap-2">
+                <span className={newPassword.length >= 8 && newPassword.length <= 128 ? "text-emerald-400 font-bold" : "text-slate-650"}>
+                  {newPassword.length >= 8 && newPassword.length <= 128 ? "✓" : "○"}
+                </span>
+                <span className={newPassword.length >= 8 && newPassword.length <= 128 ? "text-slate-200" : ""}>8 to 128 characters</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={/[A-Z]/.test(newPassword) ? "text-emerald-400 font-bold" : "text-slate-650"}>
+                  {/[A-Z]/.test(newPassword) ? "✓" : "○"}
+                </span>
+                <span className={/[A-Z]/.test(newPassword) ? "text-slate-200" : ""}>At least one uppercase letter (A-Z)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={/[a-z]/.test(newPassword) ? "text-emerald-400 font-bold" : "text-slate-650"}>
+                  {/[a-z]/.test(newPassword) ? "✓" : "○"}
+                </span>
+                <span className={/[a-z]/.test(newPassword) ? "text-slate-200" : ""}>At least one lowercase letter (a-z)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={/[0-9]/.test(newPassword) ? "text-emerald-400 font-bold" : "text-slate-650"}>
+                  {/[0-9]/.test(newPassword) ? "✓" : "○"}
+                </span>
+                <span className={/[0-9]/.test(newPassword) ? "text-slate-200" : ""}>At least one numeric digit (0-9)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={/[^A-Za-z0-9]/.test(newPassword) ? "text-emerald-400 font-bold" : "text-slate-650"}>
+                  {/[^A-Za-z0-9]/.test(newPassword) ? "✓" : "○"}
+                </span>
+                <span className={/[^A-Za-z0-9]/.test(newPassword) ? "text-slate-200" : ""}>At least one special symbol (@, #, $, etc.)</span>
+              </div>
+              <div className="flex items-center gap-2 border-t border-slate-850 pt-2 mt-1">
+                <span className={newPassword === confirmPassword && confirmPassword.length > 0 ? "text-emerald-400 font-bold" : "text-slate-650"}>
+                  {newPassword === confirmPassword && confirmPassword.length > 0 ? "✓" : "○"}
+                </span>
+                <span className={newPassword === confirmPassword && confirmPassword.length > 0 ? "text-slate-200" : ""}>Passwords match</span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-slate-800/60 pt-4 flex gap-2">
+            <Button
+              variant="outline"
+              className="border-slate-800 hover:bg-slate-850 hover:text-white"
+              onClick={() => setResetPasswordOpen(false)}
+              disabled={isResettingPassword}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold"
+              onClick={executePasswordReset}
+              disabled={
+                isResettingPassword ||
+                !/[A-Z]/.test(newPassword) ||
+                !/[a-z]/.test(newPassword) ||
+                !/[0-9]/.test(newPassword) ||
+                !/[^A-Za-z0-9]/.test(newPassword) ||
+                newPassword.length < 8 ||
+                newPassword.length > 128 ||
+                newPassword !== confirmPassword
+              }
+            >
+              {isResettingPassword ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Resetting Password...
+                </>
+              ) : (
+                "Reset Password"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
