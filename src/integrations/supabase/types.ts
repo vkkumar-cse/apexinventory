@@ -186,6 +186,7 @@ export type Database = {
           selling_price: number
           specifications: string | null
           stock: number
+          product_image_url: string | null
           supplier_id: string | null
           type: string
           updated_at: string
@@ -206,6 +207,7 @@ export type Database = {
           selling_price?: number
           specifications?: string | null
           stock?: number
+          product_image_url?: string | null
           supplier_id?: string | null
           type?: string
           updated_at?: string
@@ -226,6 +228,7 @@ export type Database = {
           selling_price?: number
           specifications?: string | null
           stock?: number
+          product_image_url?: string | null
           supplier_id?: string | null
           type?: string
           updated_at?: string

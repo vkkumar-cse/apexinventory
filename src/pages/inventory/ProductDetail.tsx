@@ -19,6 +19,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { Download, Printer, Plus, Minus, DollarSign, Loader2, AlertTriangle, Trash2, Link2, PackageX, Pencil } from "lucide-react";
 import { stockStatus } from "@/lib/queries";
+import { uploadProductImage, deleteProductImage } from "@/lib/storage";
+import { ProductImage } from "@/components/ProductImage";
+import { Package } from "lucide-react";
 
 type Product = {
   id: string; code: number; part_no: string | null; name: string; type: string; stock: number; reorder_level: number;
@@ -27,6 +30,7 @@ type Product = {
   labels: ("OPTO" | "NPD")[];
   suppliers: { name: string; contact: string | null; address: string | null } | null;
   categories: { id: string; name: string; parent_id: string | null } | null;
+  product_image_url: string | null;
 };
 
 type Tx = { id: string; type: string; quantity: number; created_at: string; note: string | null; description: string | null; user_id: string | null };
@@ -61,6 +65,8 @@ export default function ProductDetail() {
   const [qrUrl, setQrUrl] = useState("");
   const [labelQrUrl, setLabelQrUrl] = useState("");
   const [qrLabelPreviewOpen, setQrLabelPreviewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [zoom, setZoom] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Edit state
@@ -74,7 +80,114 @@ export default function ProductDetail() {
     purchase_price: "0", selling_price: "0",
     specifications: "", description: "",
     labels: [] as ("OPTO" | "NPD")[],
+    product_image_url: "",
   });
+
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Unsupported format. Use PNG, JPG, JPEG, or WEBP.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 5MB.");
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      if (edit.product_image_url) {
+        await deleteProductImage(edit.product_image_url);
+      }
+      const path = await uploadProductImage(file);
+      setEdit(prev => ({ ...prev, product_image_url: path }));
+      toast.success("Product image updated successfully.");
+    } catch (err: any) {
+      toast.error("Unable to upload image.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function handleRemoveImage() {
+    if (!edit.product_image_url) return;
+    try {
+      setUploadingImage(true);
+      await deleteProductImage(edit.product_image_url);
+      setEdit(prev => ({ ...prev, product_image_url: "" }));
+      toast.success("Product image removed successfully.");
+    } catch (err: any) {
+      toast.error("Unable to remove image.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function handleDetailDirectUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !product) return;
+
+    const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Unsupported format. Use PNG, JPG, JPEG, or WEBP.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 5MB.");
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      if (product.product_image_url) {
+        await deleteProductImage(product.product_image_url);
+      }
+      const path = await uploadProductImage(file);
+      const { error } = await supabase
+        .from("products")
+        .update({ product_image_url: path })
+        .eq("id", product.id);
+      if (error) throw error;
+
+      setProduct(prev => prev ? { ...prev, product_image_url: path } : null);
+      toast.success("Product image updated successfully.");
+    } catch (err: any) {
+      toast.error("Unable to upload image.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+
+  async function handleDetailDirectRemove() {
+    setConfirmRemoveOpen(false);
+    if (!product || !product.product_image_url) return;
+
+    try {
+      setUploadingImage(true);
+      await deleteProductImage(product.product_image_url);
+      const { error } = await supabase
+        .from("products")
+        .update({ product_image_url: null })
+        .eq("id", product.id);
+      if (error) throw error;
+
+      setProduct(prev => prev ? { ...prev, product_image_url: null } : null);
+      toast.success("Product image removed successfully.");
+    } catch (err: any) {
+      toast.error("Unable to remove image.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
 
   const productIdentifier = product ? (product.part_no ?? `#${product.code}`) : "";
   const productQrValue = product ? (product.part_no || String(product.code)) : "";
@@ -369,6 +482,7 @@ export default function ProductDetail() {
       specifications: product.specifications ?? "",
       description: product.description ?? "",
       labels: product.labels ?? [],
+      product_image_url: product.product_image_url ?? "",
     });
     setEditOpen(true);
   }
@@ -409,6 +523,7 @@ export default function ProductDetail() {
       specifications: edit.specifications.trim() || null,
       description: edit.description.trim() || null,
       labels: edit.labels,
+      product_image_url: edit.product_image_url || null,
     } as any).eq("id", product.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Product updated");
@@ -507,34 +622,91 @@ export default function ProductDetail() {
         </Alert>
       )}
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <Card className="p-6 lg:col-span-2">
-          <h2 className="font-semibold mb-4">Product details</h2>
-          <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            {fields.map(f => (
-              <div key={f.label} className="flex flex-col border-b border-border/30 pb-2">
-                <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">{f.label}</dt>
-                <dd className="mt-0.5 font-medium">{f.value}</dd>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left Card: Product Image */}
+        <Card className="p-6 flex flex-col items-center justify-center bg-card relative">
+          <div className="flex items-center justify-between w-full mb-4">
+            <h2 className="font-semibold text-lg">Product Image</h2>
+            {/* Direct Image Control Action Bar (Admins Only) */}
+            {isAdmin && (
+              <div className="flex items-center gap-1.5 no-print">
+                {uploadingImage ? (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    <span className="text-[10px]">Uploading...</span>
+                  </div>
+                ) : (
+                  <>
+                    <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded bg-primary text-primary-foreground font-semibold hover:bg-primary/90 text-xs shadow-sm">
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/jpg, image/webp"
+                        className="hidden"
+                        onChange={handleDetailDirectUpload}
+                      />
+                      {product.product_image_url ? "✏️ Replace" : "📷 Upload"}
+                    </label>
+                    {product.product_image_url && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => setConfirmRemoveOpen(true)}
+                      >
+                        🗑 Remove
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
-            ))}
-          </dl>
+            )}
+          </div>
+          <div className="w-full max-w-[340px] md:w-[280px] md:h-[280px] lg:w-[340px] lg:h-[340px] aspect-square bg-slate-950/80 dark:bg-slate-950/40 border border-border/60 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:brightness-95 transition">
+            <ProductImage
+              url={product.product_image_url}
+              name={product.name}
+              objectFit="contain"
+              className="w-full h-full"
+              onClick={() => setPreviewOpen(true)}
+              fallback={
+                <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
+                  <Package className="h-16 w-16 mb-2" />
+                  <span className="text-sm font-medium">No Image Available</span>
+                </div>
+              }
+            />
+          </div>
         </Card>
 
-        <Card className="p-6 text-center">
-          <h2 className="font-semibold mb-3">QR Code</h2>
+        {/* Right Card: QR Code */}
+        <Card className="p-6 flex flex-col items-center justify-center text-center">
+          <h2 className="font-semibold mb-3 self-start">QR Code</h2>
           <div className="bg-white rounded-lg p-4 inline-block">
             <canvas ref={qrCanvasRef} className="block" />
           </div>
           <p className="font-medium mt-3 text-sm">{product.name}</p>
           <p className="text-xs text-primary font-mono font-bold">{productIdentifier}</p>
           <p className="text-[10px] text-muted-foreground font-mono break-all mt-1">{productUrl}</p>
-          <div className="flex gap-2 mt-4 no-print">
+          <div className="flex gap-2 mt-4 no-print w-full">
             <Button variant="outline" size="sm" className="flex-1" onClick={downloadQR}><Download className="h-3 w-3 mr-1" />PNG</Button>
             <Button variant="outline" size="sm" className="flex-1" onClick={openQrLabelPreview}><Printer className="h-3 w-3 mr-1" />Preview Label</Button>
             <Button variant="outline" size="sm" className="flex-1" onClick={printQrLabel}><Printer className="h-3 w-3 mr-1" />Print Label</Button>
           </div>
         </Card>
       </div>
+
+      {/* Full-width Product Details Card */}
+      <Card className="p-6">
+        <h2 className="font-semibold text-lg mb-4">Product details</h2>
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+          {fields.map(f => (
+            <div key={f.label} className="flex flex-col border-b border-border/30 pb-2">
+              <dt className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{f.label}</dt>
+              <dd className="mt-1 font-medium text-foreground text-sm">{f.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
 
       <Card className="p-6 no-print">
         <h2 className="font-semibold mb-1">Stock operations</h2>
@@ -709,6 +881,58 @@ export default function ProductDetail() {
             <div className="space-y-2 sm:col-span-2"><Label>Specifications</Label><Textarea rows={2} value={edit.specifications} onChange={e => setEdit({ ...edit, specifications: e.target.value })} /></div>
             <div className="space-y-2 sm:col-span-2"><Label>Description</Label><Textarea rows={2} value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>
             <div className="space-y-2 sm:col-span-2">
+              <Label>Product Image</Label>
+              {uploadingImage ? (
+                <div className="flex items-center justify-center border border-dashed rounded-lg p-6 bg-muted/20">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                  <span className="text-sm text-muted-foreground">Uploading image...</span>
+                </div>
+              ) : edit.product_image_url ? (
+                <div className="flex items-center gap-4 border rounded-lg p-3 bg-muted/10">
+                  <ProductImage
+                    url={edit.product_image_url}
+                    name={edit.name || "Product preview"}
+                    className="h-16 w-16 object-cover rounded-md border"
+                    fallback={
+                      <div className="grid h-16 w-16 place-items-center rounded-md bg-primary/10 text-primary">
+                        <Package className="h-8 w-8" />
+                      </div>
+                    }
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground">Product Image Selected</p>
+                    <p className="text-xs truncate text-muted-foreground/60">Image uploaded successfully</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" className="relative">
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/jpg, image/webp"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={handleFileChange}
+                      />
+                      Replace
+                    </Button>
+                    <Button type="button" variant="destructive" size="sm" onClick={handleRemoveImage}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg p-6 bg-muted/20 hover:bg-muted/30 transition cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={handleFileChange}
+                  />
+                  <Plus className="h-6 w-6 text-muted-foreground mb-2" />
+                  <span className="text-sm font-medium">Upload Product Image</span>
+                  <span className="text-xs text-muted-foreground mt-1">PNG, JPG, JPEG, WEBP up to 5MB</span>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2 sm:col-span-2">
               <Label>Type <span className="text-muted-foreground font-normal">(custom allowed)</span></Label>
               <Input value={edit.type} onChange={e => setEdit({ ...edit, type: e.target.value })} placeholder="spare, lens, instrument…" />
             </div>
@@ -731,6 +955,60 @@ export default function ProductDetail() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Product Image Zoom Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={(open) => { setPreviewOpen(open); if (!open) setZoom(false); }}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-none">
+          <div className="relative w-full h-[80vh] flex items-center justify-center p-4">
+            <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setZoom(!zoom)}
+                className="bg-white/10 hover:bg-white/20 text-white border-none"
+              >
+                {zoom ? "Zoom Out" : "Zoom In"}
+              </Button>
+            </div>
+            <div className="w-full h-full overflow-auto flex items-center justify-center">
+              {product && (
+                <ProductImage
+                  url={product.product_image_url}
+                  name={product.name}
+                  objectFit="contain"
+                  className={`max-w-full max-h-full transition-transform duration-200 ${
+                    zoom ? "scale-150 cursor-zoom-out" : "scale-100 cursor-zoom-in"
+                  }`}
+                  onClick={() => setZoom(!zoom)}
+                  fallback={
+                    <div className="flex flex-col items-center justify-center text-white">
+                      <Package className="h-16 w-16 text-white mb-2" />
+                      <span className="text-sm font-medium">Failed to load preview</span>
+                    </div>
+                  }
+                />
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove product image?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete this product image? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDetailDirectRemove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
