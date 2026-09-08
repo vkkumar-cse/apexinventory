@@ -1130,10 +1130,9 @@ function PrintContent({
       <div className="print-header">
         <h1 className="print-company-name">APEX INDUSTRIAL METROLOGY LLP</h1>
         <div className="print-company-address">
-          <p>Shed No-2, Women's Industrial Park,</p>
-          <p>Plot No.180, SIDCO,</p>
-          <p>Kattur, Thirumullaivoyal,</p>
-          <p>Tamil Nadu – 600062</p>
+          <p>Plot No. 180, SIDCO Women's Industrial Park,</p>
+          <p>Thirumullaivoyal, Chennai – 600062</p>
+          <p>Contact No: 6385145980 / 81</p>
         </div>
         <p className="print-company-gstin">GSTIN : 33ACMFA9989N1ZC</p>
       </div>
@@ -1225,7 +1224,7 @@ function PrintContent({
       {showSignature && (
         <div className="print-signature-area">
           <div className="print-sig-block">
-            <p className="text-[8pt] font-semibold">For METRIC MEASUREMENT TECHNOLOGIES</p>
+            <p className="text-[8pt] font-semibold">For Apex Industrial Metrology Pvt Ltd</p>
             <div className="print-sig-line"></div>
             <p className="text-[7pt] text-gray-600">Authorized Signatory</p>
           </div>

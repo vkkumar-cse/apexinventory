@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, Clock, FileText, ArrowRight, ShieldCheck, Building, Handshake } from "lucide-react";
+import { Package, Clock, FileText, ArrowRight, ShieldCheck, Building, Handshake, Wrench } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 interface ModuleCard {
@@ -14,7 +14,6 @@ interface ModuleCard {
   status: "available" | "coming-soon";
 }
 
-// All 6 main modules
 const ALL_MODULES: ModuleCard[] = [
   {
     id: "inventory",
@@ -65,6 +64,14 @@ const ALL_MODULES: ModuleCard[] = [
     status: "available",
   },
   {
+    id: "service_reports",
+    title: "Service Reports",
+    description: "Create and manage customer service worksheets.",
+    icon: <Wrench className="h-8 w-8" />,
+    path: "/service-reports/dashboard",
+    status: "available",
+  },
+  {
     id: "quotation",
     title: "Quotation",
     description: "Create and manage quotations for customers.",
@@ -79,13 +86,11 @@ export default function ChooseModule() {
   const { isAdmin, moduleAccess } = useAuth();
 
   useEffect(() => {
-    document.title = "Choose Module · Apex Software";
+    document.title = "Choose Module Â· Apex Software";
   }, []);
 
-  // Admins see all modules. Workers see only modules they have access to.
   const modules = ALL_MODULES.filter((m) => {
     if (isAdmin) return true;
-    // user_management is admin-only (never shown to workers even if somehow granted)
     if (m.id === "user_management") return false;
     return moduleAccess.includes(m.id);
   });

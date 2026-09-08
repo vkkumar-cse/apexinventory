@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
@@ -107,7 +108,11 @@ type VerifiedGpsCoords = {
 
 export default function CheckIn() {
   const { user, displayName } = useAuth();
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState<ProfileLite[]>([]);
+  const [showCheckoutSuccessDialog, setShowCheckoutSuccessDialog] = useState(false);
+  const [checkoutSessionData, setCheckoutSessionData] = useState<any>(null);
+  const [isCreatingReport, setIsCreatingReport] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<AttendanceSession[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -633,6 +638,43 @@ export default function CheckIn() {
     if (error) throw error;
     await summarizeSessions();
     toast.success(`Check-out successful from ${openSession.site_name_snapshot}. Session: ${formatDurationHours(sessionHours)}`);
+    setCheckoutSessionData({
+      id: openSession.id,
+      profile_id: currentProfileId,
+      attendance_date: today,
+      site_id: openSession.site_id,
+      site_name_snapshot: openSession.site_name_snapshot,
+      check_in: openSession.check_in,
+      check_out: nowISO,
+    });
+    setShowCheckoutSuccessDialog(true);
+  };
+
+  const handleCreateServiceReportFromCheckout = async () => {
+    if (!checkoutSessionData) return;
+    setIsCreatingReport(true);
+    try {
+      const { createDraftFromAttendance, saveServiceReport } = await import("@/lib/serviceReports");
+      const draft = await createDraftFromAttendance(checkoutSessionData);
+      const newReportId = await saveServiceReport(draft);
+      
+      toast.success("Draft Service Report created successfully.");
+      setShowCheckoutSuccessDialog(false);
+      setCheckoutSessionData(null);
+      
+      navigate(`/attendance/service-reports/edit/${newReportId}`);
+    } catch (err: any) {
+      console.error("Error creating service report:", err);
+      if (err.isConfigError) {
+        toast.error("Database Migration Pending", {
+          description: "Service Reports module has not been configured yet in the database. Please apply migrations."
+        });
+      } else {
+        toast.error(err.message || "Failed to create draft report.");
+      }
+    } finally {
+      setIsCreatingReport(false);
+    }
   };
 
   const handleMarkAttendance = async () => {
@@ -1721,6 +1763,48 @@ const formatISTTime = (time: string | null) => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Service Report Prompt Modal */}
+      {showCheckoutSuccessDialog && checkoutSessionData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-[#0B1528] p-6 shadow-2xl text-center">
+            <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto mb-4 animate-bounce" />
+            <h3 className="text-xl font-bold text-white mb-2">
+              Attendance Completed Successfully
+            </h3>
+            <p className="text-sm text-slate-300 mb-6">
+              Would you like to create a Service Report for this attendance session at <span className="font-semibold text-white">{checkoutSessionData.site_name_snapshot}</span>?
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button
+                onClick={handleCreateServiceReportFromCheckout}
+                className="min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                disabled={isCreatingReport}
+              >
+                {isCreatingReport ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Creating Report...
+                  </>
+                ) : (
+                  "Create Report"
+                )}
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowCheckoutSuccessDialog(false);
+                  setCheckoutSessionData(null);
+                }}
+                variant="outline"
+                className="min-h-11 w-full border-slate-700 text-slate-300 hover:bg-slate-800"
+                disabled={isCreatingReport}
+              >
+                Later
+              </Button>
+            </div>
           </div>
         </div>
       )}

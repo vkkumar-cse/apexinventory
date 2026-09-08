@@ -24,6 +24,8 @@ import CRMRoutes from "./routes/CRMRoutes";
 import NotFound from "./pages/NotFound";
 import { Navigate } from "react-router-dom";
 import ChangePassword from "./pages/auth/ChangePassword";
+import { ServiceReportsLayout } from "./layouts/ServiceReportsLayout";
+import ServiceReportsRoutes from "./routes/ServiceReportsRoutes";
 
 const queryClient = new QueryClient();
 
@@ -130,6 +132,18 @@ const App = () => (
                   <DCLayout>
                     <DCRoutes />
                   </DCLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Service Reports Module Routes - With ServiceReportsLayout */}
+            <Route
+              path="/service-reports/*"
+              element={
+                <ProtectedRoute requiredModule="service_reports">
+                  <ServiceReportsLayout>
+                    <ServiceReportsRoutes />
+                  </ServiceReportsLayout>
                 </ProtectedRoute>
               }
             />

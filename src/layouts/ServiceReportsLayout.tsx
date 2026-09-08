@@ -1,35 +1,18 @@
 import { Link, NavLink } from "react-router-dom";
-import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LayoutDashboard, Users as UsersIcon, LogOut, ChevronLeft, CalendarClock, History, FileText, Umbrella, Calendar, MapPin, Wrench } from "lucide-react";
+import { LayoutDashboard, FileText, LogOut, ChevronLeft, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import apexLogo from "@/assets/apex-logo.jpeg";
-import { loadFaceModels } from "@/lib/faceRecognition";
 
-export function AttendanceLayout({ children }: { children: React.ReactNode }) {
+export function ServiceReportsLayout({ children }: { children: React.ReactNode }) {
   const { user, role, signOut, displayName, isAdmin } = useAuth();
 
-  useEffect(() => {
-    loadFaceModels().catch((err) => {
-      if (import.meta.env.DEV) {
-        console.error("Failed to preload face recognition models:", err);
-      }
-    });
-  }, []);
-
   const nav = [
-    { to: "/attendance/dashboard", label: "Dashboard", icon: LayoutDashboard, show: true },
-    { to: "/attendance/employees", label: "Employees", icon: UsersIcon, show: isAdmin },
-    { to: "/attendance/sites", label: "Sites", icon: MapPin, show: isAdmin },
-    { to: "/attendance/checkin", label: "Check-in", icon: CalendarClock, show: true },
-    { to: "/attendance/history", label: "History", icon: History, show: true },
-    { to: "/attendance/reports", label: "Reports", icon: FileText, show: isAdmin },
-    { to: "/attendance/leaves", label: "Leaves", icon: Umbrella, show: true },
-    { to: "/attendance/holidays", label: "Holidays", icon: Calendar, show: true },
-    { to: "/attendance/service-reports", label: "Service Reports", icon: Wrench, show: true },
-  ].filter(n => n.show);
+    { to: "/service-reports/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/service-reports/list", label: "Reports List", icon: FileText },
+  ];
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
@@ -37,9 +20,10 @@ export function AttendanceLayout({ children }: { children: React.ReactNode }) {
         <div className="container flex h-16 max-w-full items-center gap-3 px-3 sm:px-6 lg:px-8">
           <Link to="/" className="flex min-w-0 items-center gap-2 font-bold group">
             <img src={apexLogo} alt="Apex Industrial Metrology LLP" className="h-9 w-9 rounded-lg object-cover bg-white" />
-            <span className="truncate text-base tracking-tight sm:text-lg">Apex<span className="text-primary"> Attendance</span></span>
+            <span className="truncate text-base tracking-tight sm:text-lg">Apex<span className="text-primary"> Service Reports</span></span>
             <ChevronLeft className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition ml-2 opacity-0 group-hover:opacity-100" />
           </Link>
+          
           <nav className="hidden md:flex items-center gap-1 ml-6">
             {nav.map(({ to, label, icon: Icon }) => (
               <NavLink
@@ -58,6 +42,7 @@ export function AttendanceLayout({ children }: { children: React.ReactNode }) {
               </NavLink>
             ))}
           </nav>
+          
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <div className="hidden sm:flex flex-col items-end text-xs">
               <span className="text-foreground font-medium">{displayName ?? user?.email ?? 'Unknown'}</span>
@@ -70,6 +55,7 @@ export function AttendanceLayout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </div>
+        
         <nav className="scrollbar-hide md:hidden border-t border-border/60 flex max-w-full overflow-x-auto overscroll-x-contain px-2">
           {nav.map(({ to, label, icon: Icon }) => (
             <NavLink
@@ -89,6 +75,7 @@ export function AttendanceLayout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
       </header>
+      
       <main className="container max-w-full flex-1 px-3 py-4 sm:px-6 md:py-6 lg:px-8">
         {children}
       </main>
